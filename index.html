@@ -207,9 +207,9 @@ const map = L.map('map',{zoomControl:true,attributionControl:true,
 // Free for non-revenue apps under <1M tiles/month with a free ArcGIS API key.
 const ESRI_ATTR='Imagery &copy; Esri, Maxar, Earthstar Geographics';
 // bumping KEY_VER clears any stale key saved on a device so the new baked key wins
-const KEY_VER='2';
+const KEY_VER='3';
 if(localStorage.getItem('esriKeyVer')!==KEY_VER){ localStorage.removeItem('esriKey'); localStorage.setItem('esriKeyVer',KEY_VER); }
-let esriKey=localStorage.getItem('esriKey')||'AAPTanRcp7nRptgb47An1jmp1_A..YOrmJjcw55W28GnffYqF-St0iYnZmYYQ5iAjJ6LbI9zNL2-ATCi1dPl5D0_dpqofdsnA8621PZSQxoX2EKbSDbD2e8QHxu3VqF-LRcWGreumo3AJ1-mqpfxnhCLfZOuMFkmwbuA4lWygKWoChX7qxpsJg46JDdEQe_ZGfOVuyyGWfZo87Ved5tOEzl9q8Fyt-X2SsxZzAKu7eBYC4ZPbqeCQWgd7ZkxsfIyRxaR7oxAGwlXQPBFC8NA.AT1_MwPAK9WG';
+let esriKey=localStorage.getItem('esriKey')||'AAPTayscMc3JRNe_7FFvBqy9Z1A..iJ3JckvutDNPtWwuLhkH_GKZHn2J3-1_MFQ1_4NwaxXzL4b7HF8oBYwkIty1pOjR1cM2_MM9kjoYSyjD5N_l1p-cFJnSa0nZoWtJR7gTEpsKojx1pwJXZrOMCMlucEvsaUJVJXmQeYd93k62rGBVYBS14Q_dTKxKg-aE9DmVEBGyjnZQRtZhuY-gyBGH5ieGEupd_oGv93T47GYXx6bB1n7CM09y4eARc1FXeq6jBYaEemWsFjaUKv8.AT1_MwPAK9WG';
 function esriUrl(){
   return 'https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
        + (esriKey?('?token='+encodeURIComponent(esriKey)):'');
