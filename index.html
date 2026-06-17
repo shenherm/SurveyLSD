@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>LSD Patrol Nav</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
+  onerror="this.onerror=null;this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'">
+<style>
+  :root{
+    --bg:#0c0f12; --panel:#161b21; --panel2:#1f262e; --line:#2c353e;
+    --ink:#e8edf2; --muted:#8b97a3; --amber:#ffb000; --amber-dim:#caa24a;
+    --good:#3ddc84; --warn:#ff5d5d; --accent:#4fa3ff;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,system-ui,"SF Pro Text",Segoe UI,Roboto,sans-serif;overflow:hidden}
+  #map{position:absolute;inset:0;z-index:0;background:#000}
+
+  #readout{position:absolute;top:0;left:0;right:0;z-index:500;
+    padding:max(8px,env(safe-area-inset-top)) 12px 8px;
+    background:linear-gradient(180deg,rgba(8,10,13,.95),rgba(8,10,13,.78) 75%,transparent);
+    pointer-events:none}
+  #lsd{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    font-weight:700;font-size:clamp(20px,6.2vw,34px);letter-spacing:.5px;
+    color:var(--amber);line-height:1.05;text-shadow:0 1px 3px #000}
+  #lsd .approx{font-size:.5em;color:var(--amber-dim);font-weight:600;vertical-align:middle}
+  #coords{margin-top:3px;font-family:"SF Mono",ui-monospace,Menlo,monospace;
+    font-size:clamp(11px,3.4vw,14px);color:var(--muted)}
+  #coords b{color:var(--ink);font-weight:600}
+
+  #cross{position:absolute;top:50%;left:50%;z-index:450;
+    width:46px;height:46px;margin:-23px 0 0 -23px;pointer-events:none}
+  #cross::before,#cross::after{content:"";position:absolute;background:var(--amber);box-shadow:0 0 2px #000}
+  #cross::before{left:50%;top:0;width:2px;height:46px;margin-left:-1px}
+  #cross::after{top:50%;left:0;height:2px;width:46px;margin-top:-1px}
+  #cross .dot{position:absolute;top:50%;left:50%;width:8px;height:8px;margin:-4px 0 0 -4px;
+    border:2px solid var(--amber);border-radius:50%;background:transparent}
+
+  #dock{position:absolute;left:0;right:0;bottom:0;z-index:500;
+    padding:8px 10px max(10px,env(safe-area-inset-bottom));
+    display:flex;gap:8px;justify-content:center;flex-wrap:wrap;
+    background:linear-gradient(0deg,rgba(8,10,13,.92),transparent)}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    font-size:13px;font-weight:600;padding:11px 13px;border-radius:11px;min-width:62px;
+    text-align:center;cursor:pointer;user-select:none}
+  .btn:active{background:var(--panel2)}
+  .btn.on{border-color:var(--amber);color:var(--amber);box-shadow:0 0 0 1px var(--amber) inset}
+  .btn.gps.on{border-color:var(--good);color:var(--good);box-shadow:0 0 0 1px var(--good) inset}
+  .btn small{display:block;font-weight:400;font-size:10px;color:var(--muted);margin-top:1px}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:700;background:var(--panel);
+    border-top:1px solid var(--line);border-radius:16px 16px 0 0;
+    padding:14px 14px max(16px,env(safe-area-inset-bottom));
+    transform:translateY(110%);transition:transform .22s ease;max-height:74%;overflow:auto}
+  .sheet.open{transform:translateY(0)}
+  .sheet h2{margin:2px 0 12px;font-size:15px;font-weight:700}
+  .sheet .close{position:absolute;top:10px;right:12px;color:var(--muted);font-size:22px;background:none;border:none;cursor:pointer}
+  .row{display:flex;gap:8px;align-items:center;margin:8px 0}
+  .row label{font-size:12px;color:var(--muted);min-width:64px}
+  input[type=text],input[type=number]{flex:1;background:var(--panel2);border:1px solid var(--line);
+    color:var(--ink);border-radius:9px;padding:10px;font-size:15px;font-family:"SF Mono",ui-monospace,monospace}
+  .act{background:var(--accent);border:none;color:#04101f;font-weight:700;padding:11px 14px;border-radius:10px;font-size:14px;cursor:pointer}
+  .act.amber{background:var(--amber);color:#1a1200}
+  .hint{font-size:11px;color:var(--muted);margin:4px 0 10px;line-height:1.4}
+
+  .kml-item{display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid var(--line)}
+  .kml-item .swatch{width:14px;height:14px;border-radius:3px;flex:none;border:1px solid #0006}
+  .kml-item .nm{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .kml-item button{background:none;border:1px solid var(--line);color:var(--muted);border-radius:7px;padding:6px 8px;font-size:11px;cursor:pointer}
+  .toggle{width:42px;height:25px;border-radius:13px;background:var(--panel2);border:1px solid var(--line);position:relative;flex:none;cursor:pointer}
+  .toggle b{position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:var(--muted);transition:all .15s}
+  .toggle.on{background:#143a23;border-color:var(--good)}
+  .toggle.on b{left:19px;background:var(--good)}
+  .empty{color:var(--muted);font-size:12px;text-align:center;padding:18px}
+
+  #toast{position:absolute;left:50%;bottom:84px;transform:translateX(-50%) translateY(20px);
+    z-index:800;background:#000d;border:1px solid var(--line);color:var(--ink);
+    padding:9px 14px;border-radius:20px;font-size:12px;opacity:0;transition:.2s;pointer-events:none}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #banner{position:absolute;left:10px;right:10px;top:64px;z-index:600;display:none;
+    background:#3a1212;border:1px solid var(--warn);color:#ffd9d9;border-radius:10px;
+    padding:9px 12px;font-size:12px;line-height:1.4}
+  #banner.show{display:block}
+  #boot{position:absolute;inset:0;z-index:900;display:flex;align-items:center;justify-content:center;
+    background:var(--bg);color:var(--muted);font-size:13px}
+  .leaflet-control-attribution{font-size:9px !important;background:rgba(0,0,0,.5) !important;color:#aaa !important}
+  .leaflet-bar a,.leaflet-control-layers{background:var(--panel) !important;color:var(--ink) !important;border-color:var(--line) !important}
+  .leaflet-control-layers-expanded{padding:8px 10px;color:var(--ink)}
+  .pin-label{background:#000a;color:#fff;border:1px solid var(--amber);border-radius:5px;padding:1px 5px;font-size:11px;font-weight:600;white-space:nowrap}
+  .place-label{background:#0009;color:#fff;border:none;border-radius:4px;padding:0 4px;font-size:11px;white-space:nowrap}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="cross"><div class="dot"></div></div>
+
+<div id="readout">
+  <div id="lsd">—</div>
+  <div id="coords"><b id="lat">—</b> &nbsp; <b id="lon">—</b> &nbsp; <span id="zlvl"></span></div>
+</div>
+
+<div id="banner"></div>
+
+<div id="dock">
+  <button class="btn gps" id="bGps">GPS<small>follow</small></button>
+  <button class="btn" id="bMeasure">Measure<small>distance</small></button>
+  <button class="btn" id="bGoto">Go to<small>LSD / coord</small></button>
+  <button class="btn" id="bPin">Pin<small>here</small></button>
+  <button class="btn" id="bKml">Lines<small>KML</small></button>
+  <button class="btn" id="bKey">Map key<small>imagery</small></button>
+</div>
+
+<div class="sheet" id="sheetKey">
+  <button class="close" data-close>&times;</button>
+  <h2>Satellite imagery key</h2>
+  <div class="hint">For sharp Esri satellite imagery, paste a free <b>ArcGIS API key</b>. Create a free account at
+    <b>location.arcgis.com</b> → Developer dashboard → API keys. The key is stored only on this device.
+    Free for non-revenue use under ~1M tiles/month. Leave blank to use the no-key fallback or OSM.</div>
+  <div class="row"><label>API key</label><input type="text" id="inKey" placeholder="AAPK…" autocapitalize="none" autocorrect="off"></div>
+  <div class="row"><button class="act amber" id="saveKey">Save key</button>
+    <button class="act" id="clearKey" style="background:var(--panel2);color:var(--ink)">Clear</button></div>
+</div>
+
+<div class="sheet" id="sheetGoto">
+  <button class="close" data-close>&times;</button>
+  <h2>Go to a location</h2>
+  <div class="hint">Enter a legal land description and the map will centre on its LSD, or jump to a decimal lat/lon.</div>
+  <div class="row"><label>LSD</label><input type="text" id="inLsd" placeholder="07-23-052-14 W4" autocapitalize="characters"></div>
+  <div class="row"><button class="act amber" id="goLsd">Centre on LSD</button></div>
+  <div style="height:1px;background:var(--line);margin:12px 0"></div>
+  <div class="row"><label>Lat</label><input type="number" id="inLat" placeholder="53.5461" step="any"></div>
+  <div class="row"><label>Lon</label><input type="number" id="inLon" placeholder="-113.4938" step="any"></div>
+  <div class="row"><button class="act" id="goCoord">Centre on coord</button></div>
+</div>
+
+<div class="sheet" id="sheetKml">
+  <button class="close" data-close>&times;</button>
+  <h2>Pipeline lines (KML)</h2>
+  <div class="row">
+    <button class="act" id="importBtn">Import KML / KMZ</button>
+    <input type="file" id="fileIn" accept=".kml,.kmz,application/vnd.google-earth.kml+xml" style="display:none">
+  </div>
+  <div class="hint">Imported files are stored on this device. Toggle each on/off to show it; tap a name to fly to it.</div>
+  <div id="kmlList"><div class="empty">No KML imported yet.</div></div>
+</div>
+
+<div class="sheet" id="sheetPin">
+  <button class="close" data-close>&times;</button>
+  <h2>Drop a labelled pin</h2>
+  <div class="hint" id="pinWhere">At map centre.</div>
+  <div class="row"><label>Label</label><input type="text" id="inPinLabel" placeholder="e.g. Valve site / photo target"></div>
+  <div class="row">
+    <button class="act amber" id="dropPin">Drop pin</button>
+    <button class="act" id="clearPins" style="background:var(--panel2);color:var(--ink)">Clear all pins</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="boot">Loading map engine…</div>
+
+<!-- Leaflet: primary CDN, with JS fallback chain handled below -->
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* ---------- robust loader: make sure Leaflet (L) exists, then start ---------- */
+(function start(){
+  if(window.L){ boot(); return; }
+  var fallbacks=['https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+                 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js'];
+  (function tryNext(i){
+    if(window.L){ boot(); return; }
+    if(i>=fallbacks.length){ document.getElementById('boot').textContent=
+      'Could not load the map engine. Check your internet connection and reload.'; return; }
+    var s=document.createElement('script'); s.src=fallbacks[i];
+    s.onload=function(){ window.L?boot():tryNext(i+1); };
+    s.onerror=function(){ tryNext(i+1); };
+    document.head.appendChild(s);
+  })(0);
+})();
+function boot(){ var b=document.getElementById('boot'); if(b) b.remove(); initApp(); }
+
+function ensureJsZip(){
+  return new Promise(function(res,rej){
+    if(window.JSZip) return res();
+    var s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
+    s.onload=res; s.onerror=rej; document.head.appendChild(s);
+  });
+}
+
+/* =========================================================================
+   App
+   ========================================================================= */
+function initApp(){
+const $ = s => document.querySelector(s);
+const toast = (m)=>{const t=$('#toast');t.textContent=m;t.classList.add('show');
+  clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2000);};
+const showBanner=(m)=>{const b=$('#banner');b.innerHTML=m;b.classList.add('show');};
+
+/* ---------- Map + base layers (with diagnosis) ---------- */
+const map = L.map('map',{zoomControl:true,attributionControl:true,
+  center:[53.5461,-113.4938], zoom:13, maxZoom:21, zoomSnap:0.25});
+
+// Esri World Imagery via the supported, token-authenticated basemap endpoint.
+// Free for non-revenue apps under <1M tiles/month with a free ArcGIS API key.
+const ESRI_ATTR='Imagery &copy; Esri, Maxar, Earthstar Geographics';
+// bumping KEY_VER clears any stale key saved on a device so the new baked key wins
+const KEY_VER='2';
+if(localStorage.getItem('esriKeyVer')!==KEY_VER){ localStorage.removeItem('esriKey'); localStorage.setItem('esriKeyVer',KEY_VER); }
+let esriKey=localStorage.getItem('esriKey')||'AAPTanRcp7nRptgb47An1jmp1_A..YOrmJjcw55W28GnffYqF-St0iYnZmYYQ5iAjJ6LbI9zNL2-ATCi1dPl5D0_dpqofdsnA8621PZSQxoX2EKbSDbD2e8QHxu3VqF-LRcWGreumo3AJ1-mqpfxnhCLfZOuMFkmwbuA4lWygKWoChX7qxpsJg46JDdEQe_ZGfOVuyyGWfZo87Ved5tOEzl9q8Fyt-X2SsxZzAKu7eBYC4ZPbqeCQWgd7ZkxsfIyRxaR7oxAGwlXQPBFC8NA.AT1_MwPAK9WG';
+function esriUrl(){
+  return 'https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+       + (esriKey?('?token='+encodeURIComponent(esriKey)):'');
+}
+const esri=L.tileLayer(esriUrl(),{maxZoom:21,maxNativeZoom:19,attribution:ESRI_ATTR});
+
+// Offline base: EOX Sentinel-2 cloudless (~10m, free, legally bakeable). Online for now;
+// the pre-built MBTiles pack (build_offline_base.py) will make this work with no signal.
+const S2_YEAR='2024';
+const s2attr='Sentinel-2 cloudless '+S2_YEAR+' &copy; EOX IT Services GmbH (modified Copernicus Sentinel data)';
+const s2=L.tileLayer('https://{s}.s2maps-tiles.eu/wmts/1.0.0/s2cloudless-'+S2_YEAR+'_3857/default/g/{z}/{y}/{x}.jpg',
+  {maxZoom:21,maxNativeZoom:14,subdomains:'abcdefgh',attribution:s2attr});
+
+const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'});
+
+// Sentinel base sits underneath; Esri high-res draws on top when online.
+// Offline (once the pack is wired), Esri tiles simply don't draw and the base shows through.
+s2.addTo(map);
+esri.addTo(map);
+const layersCtl=L.control.layers(
+  { 'Sentinel-2 (offline base)':s2, 'Streets (OSM)':osm },     // base layers (pick one)
+  { 'Esri hi-res (online)':esri },                              // overlay (draws on top)
+  {position:'topright',collapsed:true}
+).addTo(map);
+
+function applyEsriKey(k){
+  esriKey=(k||'').trim();
+  localStorage.setItem('esriKey',esriKey);
+  esri.setUrl(esriUrl());
+  if(esriKey){ esri.addTo(map); $('#banner').classList.remove('show'); }
+}
+
+let esriErr=0;
+esri.on('tileerror',()=>{ esriErr++;
+  if(esriErr===6) showBanner('Esri hi-res isn’t loading. Check your <b>Map key</b> (below), or your network may block the imagery host — '+
+    'test on a phone hotspot. The <b>Sentinel-2</b> base underneath still gives you orientation.');
+});
+esri.on('load',()=>{ esriErr=0; $('#banner').classList.remove('show'); });
+
+/* ============================================================
+   ATS / Dominion Land Survey  <->  lat/lon   (APPROXIMATE)
+   ============================================================ */
+const MERIDIANS=[{n:1,lon:-97.4583},{n:2,lon:-102.0},{n:3,lon:-106.0},
+                 {n:4,lon:-110.0},{n:5,lon:-114.0},{n:6,lon:-118.0}];
+const MILE_KM=1.609344, TWP_KM=6*MILE_KM, KM_PER_DEG_LAT=110.94;
+const TWP_DLAT=TWP_KM/KM_PER_DEG_LAT;
+const rangeWidthDeg=lat=>TWP_KM/(111.320*Math.cos(lat*Math.PI/180));
+
+function latlonToLSD(lat,lon){
+  let gov=null;
+  for(const m of MERIDIANS){ if(m.lon>=lon && (!gov||m.lon<gov.lon)) gov=m; }
+  if(!gov) return null;
+  const rw=rangeWidthDeg(lat);
+  const distW=(gov.lon-lon)/rw;
+  const rge=Math.floor(distW)+1;
+  const twpF=(lat-49.0)/TWP_DLAT, twp=Math.floor(twpF)+1;
+  if(twp<1) return null;
+  const fE=distW-(rge-1), fN=twpF-(twp-1);
+  const c=Math.min(5,Math.floor(fE*6)), r=Math.min(5,Math.floor(fN*6));
+  const sec=(r%2===0)?r*6+1+c:r*6+6-c;
+  const cc=Math.min(3,Math.floor((fE*6-c)*4)), rr=Math.min(3,Math.floor((fN*6-r)*4));
+  const lsd=(rr%2===0)?rr*4+1+cc:rr*4+4-cc;
+  return {lsd,sec,twp,rge,mer:gov.n};
+}
+function lsdToLatLon({lsd,sec,twp,rge,mer}){
+  const gov=MERIDIANS.find(m=>m.n===mer); if(!gov) return null;
+  const r=Math.floor((sec-1)/6), c=(r%2===0)?(sec-(r*6+1)):(r*6+6-sec);
+  const rr=Math.floor((lsd-1)/4), cc=(rr%2===0)?(lsd-(rr*4+1)):(rr*4+4-lsd);
+  const fN=(r+(rr+0.5)/4)/6, fE=(c+(cc+0.5)/4)/6;
+  const lat=49.0+(twp-1+fN)*TWP_DLAT, lon=gov.lon-((rge-1)+fE)*rangeWidthDeg(lat);
+  return {lat,lon};
+}
+const fmtLSD=o=>{ if(!o) return '—';
+  const p=(n,w=2)=>String(n).padStart(w,'0');
+  return `${p(o.lsd)}-${p(o.sec)}-${p(o.twp,3)}-${p(o.rge,2)} W${o.mer}`; };
+const parseLSD=str=>{
+  const m=str.toUpperCase().match(/(\d{1,2})\D+(\d{1,2})\D+(\d{1,3})\D+(\d{1,2})\D*W?\s*(\d)/);
+  return m?{lsd:+m[1],sec:+m[2],twp:+m[3],rge:+m[4],mer:+m[5]}:null; };
+
+/* ---------- Readout ---------- */
+function updateReadout(){
+  const c=map.getCenter();
+  $('#lat').textContent=c.lat.toFixed(5);
+  $('#lon').textContent=c.lng.toFixed(5);
+  $('#zlvl').textContent='z'+map.getZoom().toFixed(1);
+  const o=latlonToLSD(c.lat,c.lng);
+  $('#lsd').innerHTML=fmtLSD(o)+(o?' <span class="approx">≈ approx</span>':'');
+}
+map.on('move zoom',updateReadout); updateReadout();
+
+/* ---------- Sheets ---------- */
+const closeSheets=()=>document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));
+const openSheet=id=>{ closeSheets(); $('#'+id).classList.add('open'); };
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closeSheets);
+
+/* ---------- Follow GPS ---------- */
+let watchId=null,gpsMarker=null,gpsCircle=null,following=false;
+$('#bGps').onclick=()=>{
+  if(following){ stopGps(); return; }
+  if(!navigator.geolocation){ toast('No geolocation on this device'); return; }
+  following=true; $('#bGps').classList.add('on');
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    const {latitude,longitude,accuracy}=pos.coords, ll=[latitude,longitude];
+    if(!gpsMarker){
+      gpsMarker=L.circleMarker(ll,{radius:7,color:'#04101f',weight:2,fillColor:'#3ddc84',fillOpacity:1}).addTo(map);
+      gpsCircle=L.circle(ll,{radius:accuracy,color:'#3ddc84',weight:1,fillColor:'#3ddc84',fillOpacity:.08}).addTo(map);
+    } else { gpsMarker.setLatLng(ll); gpsCircle.setLatLng(ll).setRadius(accuracy); }
+    if(following) map.panTo(ll,{animate:true,duration:.4});
+  }, err=>{
+    toast('GPS error: '+err.message+(location.protocol!=='https:'?' (needs HTTPS)':''));
+    stopGps();
+  }, {enableHighAccuracy:true,maximumAge:1000,timeout:15000});
+};
+function stopGps(){ following=false; $('#bGps').classList.remove('on');
+  if(watchId!=null) navigator.geolocation.clearWatch(watchId); watchId=null; }
+map.on('dragstart',()=>{ if(following){ following=false; $('#bGps').classList.remove('on'); }});
+
+/* ---------- Measure ---------- */
+let measuring=false,mPts=[],mLayer=L.layerGroup().addTo(map);
+$('#bMeasure').onclick=()=>{ measuring=!measuring; $('#bMeasure').classList.toggle('on',measuring);
+  mPts=[]; mLayer.clearLayers(); toast(measuring?'Tap two points to measure':'Measure off'); };
+map.on('click',e=>{
+  if(!measuring) return;
+  mPts.push(e.latlng);
+  L.circleMarker(e.latlng,{radius:5,color:'#fff',weight:2,fillColor:'#4fa3ff',fillOpacity:1}).addTo(mLayer);
+  if(mPts.length===2){
+    const d=map.distance(mPts[0],mPts[1]);
+    L.polyline(mPts,{color:'#4fa3ff',weight:3,dashArray:'6 5'}).addTo(mLayer);
+    const mid=L.latLng((mPts[0].lat+mPts[1].lat)/2,(mPts[0].lng+mPts[1].lng)/2);
+    L.marker(mid,{icon:L.divIcon({className:'pin-label',
+      html:(d<1000?d.toFixed(1)+' m':(d/1000).toFixed(3)+' km'),iconSize:null})}).addTo(mLayer);
+    mPts=[];
+  }
+});
+
+/* ---------- Go to ---------- */
+$('#bGoto').onclick=()=>openSheet('sheetGoto');
+$('#goLsd').onclick=()=>{
+  const o=parseLSD($('#inLsd').value); if(!o){ toast('Format: 07-23-052-14 W4'); return; }
+  const ll=lsdToLatLon(o); if(!ll){ toast('Bad LSD'); return; }
+  map.setView([ll.lat,ll.lon],16); closeSheets();
+};
+$('#goCoord').onclick=()=>{
+  const la=parseFloat($('#inLat').value), lo=parseFloat($('#inLon').value);
+  if(isNaN(la)||isNaN(lo)){ toast('Enter lat and lon'); return; }
+  map.setView([la,lo],16); closeSheets();
+};
+
+/* ---------- Pins ---------- */
+let pinLayer=L.layerGroup().addTo(map);
+let pins=JSON.parse(localStorage.getItem('pins')||'[]');
+function renderPins(){
+  pinLayer.clearLayers();
+  pins.forEach(p=>{
+    L.marker([p.lat,p.lon],{icon:L.divIcon({className:'',
+      html:'<div style="font-size:22px;line-height:1;transform:translate(-2px,-20px)">📍</div>',iconSize:[0,0]})}).addTo(pinLayer);
+    if(p.label) L.marker([p.lat,p.lon],{icon:L.divIcon({className:'pin-label',html:p.label,iconSize:null,iconAnchor:[-8,8]})}).addTo(pinLayer);
+  });
+}
+renderPins();
+$('#bPin').onclick=()=>{ const c=map.getCenter();
+  $('#pinWhere').textContent='At centre: '+c.lat.toFixed(5)+', '+c.lng.toFixed(5)+'  ('+fmtLSD(latlonToLSD(c.lat,c.lng))+')';
+  $('#inPinLabel').value=''; openSheet('sheetPin'); };
+$('#dropPin').onclick=()=>{ const c=map.getCenter();
+  pins.push({lat:c.lat,lon:c.lng,label:$('#inPinLabel').value.trim()});
+  localStorage.setItem('pins',JSON.stringify(pins)); renderPins(); closeSheets(); toast('Pin dropped'); };
+$('#clearPins').onclick=()=>{ if(!pins.length){toast('No pins');return;}
+  pins=[]; localStorage.setItem('pins','[]'); renderPins(); closeSheets(); toast('Pins cleared'); };
+
+/* ---------- KML ---------- */
+let kmls=JSON.parse(localStorage.getItem('kmls')||'[]');
+const kmlLayers={};
+const PALETTE=['#ffd24a','#4fa3ff','#3ddc84','#ff7ad9','#ff5d5d','#b48cff','#5ce0d8','#ff9f43'];
+function kmlColorToHex(kc){ if(!kc) return null; kc=kc.replace('#','').trim();
+  if(kc.length<8) return '#'+kc;
+  return '#'+kc.slice(6,8)+kc.slice(4,6)+kc.slice(2,4); }
+function parseCoords(txt){ return txt.trim().split(/\s+/).map(t=>{
+  const [lo,la]=t.split(',').map(Number);
+  return (isFinite(la)&&isFinite(lo))?[la,lo]:null; }).filter(Boolean); }
+function drawKml(item){
+  if(kmlLayers[item.id]) map.removeLayer(kmlLayers[item.id]);
+  const grp=L.layerGroup();
+  const doc=new DOMParser().parseFromString(item.xml,'text/xml');
+  const styles={};
+  doc.querySelectorAll('Style').forEach(s=>{ const id=s.getAttribute('id');
+    const lc=s.querySelector('LineStyle > color'); if(id&&lc) styles['#'+id]=kmlColorToHex(lc.textContent); });
+  doc.querySelectorAll('StyleMap').forEach(sm=>{ const id=sm.getAttribute('id');
+    const norm=[...sm.querySelectorAll('Pair')].find(p=>p.querySelector('key')?.textContent==='normal');
+    const url=norm?.querySelector('styleUrl')?.textContent?.trim();
+    if(id&&url&&styles[url]) styles['#'+id]=styles[url]; });
+  let bounds=[];
+  doc.querySelectorAll('Placemark').forEach(pm=>{
+    const name=pm.querySelector('name')?.textContent?.trim()||'';
+    const su=pm.querySelector('styleUrl')?.textContent?.trim();
+    const inlineLc=pm.querySelector('LineStyle > color');
+    const color=kmlColorToHex(inlineLc?.textContent)||(su&&styles[su])||item.color||'#ffd24a';
+    pm.querySelectorAll('LineString > coordinates').forEach(co=>{
+      const pts=parseCoords(co.textContent);
+      if(pts.length){ L.polyline(pts,{color,weight:3,opacity:.95}).addTo(grp); bounds=bounds.concat(pts); }});
+    pm.querySelectorAll('Point > coordinates').forEach(co=>{
+      const pts=parseCoords(co.textContent);
+      if(pts.length){
+        L.circleMarker(pts[0],{radius:5,color:'#000',weight:1,fillColor:color,fillOpacity:1}).addTo(grp);
+        if(name) L.marker(pts[0],{icon:L.divIcon({className:'place-label',html:name,iconSize:null,iconAnchor:[-7,6]})}).addTo(grp);
+        bounds.push(pts[0]);
+      }});
+  });
+  item._bounds=bounds.length?L.latLngBounds(bounds):null;
+  kmlLayers[item.id]=grp;
+  if(item.on) grp.addTo(map);
+}
+function renderKmlList(){
+  const box=$('#kmlList');
+  if(!kmls.length){ box.innerHTML='<div class="empty">No KML imported yet.</div>'; return; }
+  box.innerHTML='';
+  kmls.forEach(item=>{
+    const row=document.createElement('div'); row.className='kml-item';
+    const tog=document.createElement('div'); tog.className='toggle'+(item.on?' on':''); tog.innerHTML='<b></b>';
+    tog.onclick=()=>{ item.on=!item.on; saveKmls();
+      if(item.on){ if(!kmlLayers[item.id]) drawKml(item); else kmlLayers[item.id].addTo(map); }
+      else if(kmlLayers[item.id]) map.removeLayer(kmlLayers[item.id]);
+      tog.classList.toggle('on',item.on); };
+    const sw=document.createElement('div'); sw.className='swatch'; sw.style.background=item.color||'#ffd24a';
+    const nm=document.createElement('div'); nm.className='nm'; nm.textContent=item.name;
+    nm.onclick=()=>{ if(!kmlLayers[item.id]) drawKml(item);
+      if(item._bounds){ map.fitBounds(item._bounds.pad(0.1)); closeSheets(); } else toast('No geometry to zoom to'); };
+    const del=document.createElement('button'); del.textContent='Delete';
+    del.onclick=()=>{ if(kmlLayers[item.id]) map.removeLayer(kmlLayers[item.id]); delete kmlLayers[item.id];
+      kmls=kmls.filter(k=>k.id!==item.id); saveKmls(); renderKmlList(); };
+    row.append(tog,sw,nm,del); box.append(row);
+  });
+}
+function saveKmls(){ localStorage.setItem('kmls',
+  JSON.stringify(kmls.map(k=>({id:k.id,name:k.name,xml:k.xml,on:k.on,color:k.color})))); }
+async function addKmlFromFile(file){
+  let xml='';
+  if(file.name.toLowerCase().endsWith('.kmz')){
+    try{ await ensureJsZip(); }catch(e){ toast('Could not load KMZ reader'); return; }
+    const zip=await JSZip.loadAsync(file);
+    const kmlName=Object.keys(zip.files).find(n=>n.toLowerCase().endsWith('.kml'));
+    if(!kmlName){ toast('No .kml inside .kmz'); return; }
+    xml=await zip.files[kmlName].async('string');
+  } else { xml=await file.text(); }
+  const item={id:'k'+Date.now()+Math.floor(Math.random()*999),
+    name:file.name.replace(/\.(kml|kmz)$/i,''), xml, on:true, color:PALETTE[kmls.length%PALETTE.length]};
+  kmls.push(item); saveKmls(); drawKml(item); renderKmlList();
+  if(item._bounds) map.fitBounds(item._bounds.pad(0.1));
+  toast('Imported "'+item.name+'"');
+}
+$('#bKml').onclick=()=>{ renderKmlList(); openSheet('sheetKml'); };
+$('#bKey').onclick=()=>{ $('#inKey').value=esriKey; openSheet('sheetKey'); };
+$('#saveKey').onclick=()=>{ applyEsriKey($('#inKey').value);
+  layersCtl.addTo(map); closeSheets(); toast(esriKey?'Key saved — Esri satellite on':'Key cleared'); };
+$('#clearKey').onclick=()=>{ applyEsriKey(''); $('#inKey').value=''; toast('Key cleared'); };
+$('#importBtn').onclick=()=>$('#fileIn').click();
+$('#fileIn').onchange=e=>{ const f=e.target.files[0]; if(f) addKmlFromFile(f); e.target.value=''; };
+kmls.forEach(drawKml);
+
+setTimeout(()=>map.invalidateSize(),200);
+} /* end initApp */
+</script>
+</body>
+</html>
