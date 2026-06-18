@@ -124,16 +124,52 @@
     <button class="act" id="clearKey" style="background:var(--panel2);color:var(--ink)">Clear</button></div>
 </div>
 
+<style>
+.gp-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.gp-tab{min-height:46px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--muted);font-size:15px;font-weight:600;cursor:pointer}
+.gp-tab.on{background:var(--amber);color:#11161b;border-color:var(--amber)}
+.gp-read{background:#11161b;border:1px solid var(--line);border-radius:10px;padding:12px 10px;text-align:center;margin-bottom:10px;font-family:"SF Mono",ui-monospace,monospace;font-size:21px;letter-spacing:.5px;min-height:26px}
+.gp-seg{padding:1px 4px;border-radius:5px;color:var(--ink)}
+.gp-seg.dim{color:#4a5663}
+.gp-seg.on{background:var(--amber);color:#11161b}
+.gp-chips{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-bottom:10px}
+.gp-chip{min-height:44px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05}
+.gp-chip.on{border-color:var(--amber);background:var(--panel2)}
+.gp-chip b{color:var(--ink);font-size:16px;font-weight:600;font-family:"SF Mono",ui-monospace,monospace}
+.gp-chip s{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.gp-chip.on s{color:var(--amber)}
+.gp-g3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.gp-g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gp-k{min-height:60px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--ink);font-size:25px;font-weight:600;font-family:"SF Mono",ui-monospace,monospace;cursor:pointer}
+.gp-k:active{background:var(--amber);color:#11161b}
+.gp-k.am{color:var(--amber)}
+.gp-b{min-height:54px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--ink);font-size:18px;font-weight:600;font-family:"SF Mono",ui-monospace,monospace;cursor:pointer}
+.gp-b.sel{background:var(--amber);color:#11161b;border-color:var(--amber)}
+.gp-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin:2px 2px 7px}
+.gp-quad{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gp-qc{border:1px solid var(--line);border-radius:10px;padding:6px;background:#11161b}
+.gp-qh{width:100%;min-height:28px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:#9fb0c0;font-size:13px;font-weight:600;letter-spacing:1px;cursor:pointer;margin-bottom:6px}
+.gp-qh.sel{background:var(--amber);color:#11161b;border-color:var(--amber)}
+.gp-qg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.gp-n{min-height:48px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--ink);font-size:17px;font-weight:600;font-family:"SF Mono",ui-monospace,monospace;cursor:pointer}
+.gp-n.sel{background:var(--amber);color:#11161b;border-color:var(--amber)}
+.gp-go{min-height:60px;border-radius:11px;background:var(--good);color:#06281a;border:none;font-size:19px;font-weight:700;cursor:pointer;width:100%;margin-top:11px;letter-spacing:.4px}
+.gp-go:active{filter:brightness(1.12)}
+.gp-conf{margin-top:9px;text-align:center;font-size:14px;color:var(--good);font-family:"SF Mono",ui-monospace,monospace;min-height:18px}
+.gp-sl{min-height:50px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:#cfd8e1;font-size:16px;font-weight:600;font-family:"SF Mono",ui-monospace,monospace;cursor:pointer}
+.gp-sl:active{background:var(--amber);color:#11161b}
+</style>
 <div class="sheet" id="sheetGoto">
   <button class="close" data-close>&times;</button>
   <h2>Go to a location</h2>
-  <div class="hint">Enter a full LSD or a quarter section — e.g. <b>(SE) 07-23-52-14-W4M</b> or <b>SE 23-52-14 W4M</b> — and the map centres on it (exact, from the ATS grid). Or jump to a decimal lat/lon.</div>
-  <div class="row"><label>LSD / Qtr</label><input type="text" id="inLsd" placeholder="(SE) 07-23-52-14-W4M" autocapitalize="characters"></div>
-  <div class="row"><button class="act amber" id="goLsd">Centre on LSD</button></div>
-  <div style="height:1px;background:var(--line);margin:12px 0"></div>
-  <div class="row"><label>Lat</label><input type="number" id="inLat" placeholder="53.5461" step="any"></div>
-  <div class="row"><label>Lon</label><input type="number" id="inLon" placeholder="-113.4938" step="any"></div>
-  <div class="row"><button class="act" id="goCoord">Centre on coord</button></div>
+  <div class="gp-tabs">
+    <button class="gp-tab on" data-gpmode="lsd">Legal land</button>
+    <button class="gp-tab" data-gpmode="coord">Coordinate</button>
+  </div>
+  <div class="gp-read" id="gpRead"></div>
+  <div id="gpBody"></div>
+  <button class="gp-go" id="gpGo">GO</button>
+  <div class="gp-conf" id="gpConf"></div>
 </div>
 
 <div class="sheet" id="sheetKml">
@@ -462,20 +498,108 @@ map.on('click',e=>{
   }
 });
 
-/* ---------- Go to ---------- */
-$('#bGoto').onclick=()=>openSheet('sheetGoto');
-$('#goLsd').onclick=()=>{
-  const o=parseLSD($('#inLsd').value);
-  if(!o){ toast('Try e.g.  (SE) 07-23-52-14-W4M'); return; }
-  const ll=lsdToLatLon(o);
-  if(!ll){ toast('Not found in the ATS grid'); return; }
-  map.setView([ll.lat,ll.lon], o.lsd?17:16); closeSheets();
-};
-$('#goCoord').onclick=()=>{
-  const la=parseFloat($('#inLat').value), lo=parseFloat($('#inLon').value);
-  if(isNaN(la)||isNaN(lo)){ toast('Enter lat and lon'); return; }
-  map.setView([la,lo],16); closeSheets();
-};
+/* ---------- Go to (cockpit pad) ---------- */
+(function(){
+  const S={mode:'lsd',active:'spot',spotType:'lsd',
+    lsd:{spot:'',sec:'',twp:'',rge:'',mer:''}, coord:{active:'lat',lat:'',lon:''}};
+  const MAX={sec:36,twp:126,rge:34}, ORDER=['spot','sec','twp','rge','mer'];
+  const QUAD={NW:[13,14,12,11],NE:[15,16,10,9],SW:[5,6,4,3],SE:[7,8,2,1]};
+  const read=$('#gpRead'), bodyEl=$('#gpBody'), conf=$('#gpConf');
+  const pd=(n,w)=>{n=''+n;while(n.length<w)n='0'+n;return n;};
+  const seg=(t,on,dim)=>'<span class="gp-seg'+(on?' on':'')+(dim?' dim':'')+'">'+t+'</span>';
+  function renderRead(){
+    if(S.mode==='coord'){const c=S.coord;
+      read.innerHTML='LAT '+seg(c.lat||'·····',c.active==='lat')+'<br>LON '+seg(c.lon||'·····',c.active==='lon');return;}
+    const L=S.lsd,a=S.active; let q='··';
+    if(S.spotType==='qtr'&&L.spot)q=L.spot; else if(S.spotType==='lsd'&&L.spot)q=quarterFromLsd(+L.spot);
+    let s='('+seg(q,a==='spot',q==='··')+') ';
+    if(S.spotType==='lsd')s+=seg(L.spot?pd(L.spot,2):'··',a==='spot',!L.spot)+'-';
+    s+=seg(L.sec?pd(L.sec,2):'··',a==='sec',!L.sec)+'-'+seg(L.twp?pd(L.twp,2):'···',a==='twp',!L.twp)+'-'
+      +seg(L.rge?pd(L.rge,2):'··',a==='rge',!L.rge)+'-'+seg(L.mer?('W'+L.mer+'M'):'W·M',a==='mer',!L.mer);
+    read.innerHTML=s;
+  }
+  const chip=(f,label,val)=>'<button class="gp-chip'+(S.active===f?' on':'')+'" data-gpfield="'+f+'"><s>'+label+'</s><b>'+(val||'·')+'</b></button>';
+  function renderBody(){
+    if(S.mode==='coord'){renderCoord();return;}
+    const L=S.lsd;
+    const spotVal=L.spot?(S.spotType==='lsd'?pd(L.spot,2):L.spot):'';
+    const spotLbl=L.spot?(S.spotType==='lsd'?'LSD':'Qtr'):'LSD/Qtr';
+    let html='<div class="gp-chips">'+chip('spot',spotLbl,spotVal)+chip('sec','Sec',L.sec)
+      +chip('twp','Twp',L.twp)+chip('rge','Rge',L.rge)+chip('mer','Mer',L.mer?('W'+L.mer):'')+'</div>';
+    if(S.active==='spot'){
+      html+='<div class="gp-lbl">Tap a spot — or a quarter label (north up)</div><div class="gp-quad">';
+      ['NW','NE','SW','SE'].forEach(qd=>{
+        html+='<div class="gp-qc"><button class="gp-qh'+(S.spotType==='qtr'&&L.spot===qd?' sel':'')+'" data-gpqtr="'+qd+'">'+qd+'</button><div class="gp-qg">';
+        QUAD[qd].forEach(n=>{html+='<button class="gp-n'+(S.spotType==='lsd'&&L.spot==n?' sel':'')+'" data-gplsd="'+n+'">'+n+'</button>';});
+        html+='</div></div>';
+      });
+      html+='</div>';
+    } else if(S.active==='mer'){
+      html+='<div class="gp-lbl">Meridian</div><div class="gp-g3">';
+      [4,5,6,1,2,3].forEach(m=>{html+='<button class="gp-b'+(L.mer==m?' sel':'')+'" data-gpmer="'+m+'">W'+m+'M</button>';});
+      html+='</div>';
+    } else html+=keypad(false);
+    bodyEl.innerHTML=html;
+  }
+  function renderCoord(){
+    const c=S.coord;
+    let html='<div class="gp-chips" style="grid-template-columns:1fr 1fr">'
+      +'<button class="gp-chip'+(c.active==='lat'?' on':'')+'" data-gpcf="lat"><s>Latitude</s><b>'+(c.lat||'·')+'</b></button>'
+      +'<button class="gp-chip'+(c.active==='lon'?' on':'')+'" data-gpcf="lon"><s>Longitude</s><b>'+(c.lon||'·')+'</b></button></div>';
+    html+=keypad(true); bodyEl.innerHTML=html;
+  }
+  function keypad(coord){
+    let h='<div class="gp-g3">';
+    [1,2,3,4,5,6,7,8,9].forEach(d=>{h+='<button class="gp-k" data-gpk="'+d+'">'+d+'</button>';});
+    h+=(coord?'<button class="gp-k am" data-gpact="dot">.</button>':'<button class="gp-k am" data-gpact="back">\u232B</button>');
+    h+='<button class="gp-k" data-gpk="0">0</button>';
+    h+=(coord?'<button class="gp-k am" data-gpact="sign">\u00B1</button>':'<button class="gp-k am" data-gpact="next">\u25B8</button>');
+    h+='</div>';
+    if(coord)h+='<div class="gp-g2" style="margin-top:8px"><button class="gp-sl" data-gpact="back">\u232B Del</button><button class="gp-sl" data-gpact="cnext">Next \u25B8</button></div>';
+    return h;
+  }
+  function advance(){const i=ORDER.indexOf(S.active);if(i<ORDER.length-1)S.active=ORDER[i+1];all();}
+  function all(){conf.textContent='';renderRead();renderBody();}
+  document.querySelectorAll('.gp-tab').forEach(t=>{t.onclick=()=>{
+    S.mode=t.dataset.gpmode;document.querySelectorAll('.gp-tab').forEach(x=>x.classList.toggle('on',x===t));all();};});
+  bodyEl.addEventListener('click',e=>{
+    const el=e.target.closest('button');if(!el)return;const d=el.dataset;
+    if(d.gpfield){S.active=d.gpfield;return all();}
+    if(d.gpcf){S.coord.active=d.gpcf;return all();}
+    if(d.gplsd){S.spotType='lsd';S.lsd.spot=d.gplsd;return advance();}
+    if(d.gpqtr){S.spotType='qtr';S.lsd.spot=d.gpqtr;return advance();}
+    if(d.gpmer){S.lsd.mer=d.gpmer;return advance();}
+    if(d.gpk!==undefined){
+      if(S.mode==='coord'){S.coord[S.coord.active]+=d.gpk;return all();}
+      const f=S.active;if(S.lsd[f]===''&&d.gpk==='0')return;
+      const nv=S.lsd[f]+d.gpk;if(parseInt(nv,10)>MAX[f])return;
+      S.lsd[f]=nv;if(parseInt(nv,10)*10>MAX[f])return advance();return all();
+    }
+    const act=d.gpact;
+    if(act==='dot'){const fa=S.coord.active;if(S.coord[fa].indexOf('.')<0)S.coord[fa]+=(S.coord[fa]===''||S.coord[fa]==='-'?'0.':'.');return all();}
+    if(act==='sign'){const fs=S.coord.active;S.coord[fs]=S.coord[fs].charAt(0)==='-'?S.coord[fs].slice(1):'-'+S.coord[fs];return all();}
+    if(act==='back'){if(S.mode==='coord')S.coord[S.coord.active]=S.coord[S.coord.active].slice(0,-1);else S.lsd[S.active]=S.lsd[S.active].slice(0,-1);return all();}
+    if(act==='next')return advance();
+    if(act==='cnext'){S.coord.active=S.coord.active==='lat'?'lon':'lat';return all();}
+  });
+  $('#gpGo').onclick=()=>{
+    if(S.mode==='coord'){
+      const la=parseFloat(S.coord.lat), lo=parseFloat(S.coord.lon);
+      if(isNaN(la)||isNaN(lo)){toast('Enter lat and lon');return;}
+      map.setView([la,lo],16);closeSheets();return;
+    }
+    const L=S.lsd;
+    if(!L.spot||!L.sec||!L.twp||!L.rge||!L.mer){toast('Fill every field first');return;}
+    const o=(S.spotType==='lsd')
+      ? {lsd:+L.spot,sec:+L.sec,twp:+L.twp,rge:+L.rge,mer:+L.mer}
+      : {qtr:L.spot,sec:+L.sec,twp:+L.twp,rge:+L.rge,mer:+L.mer};
+    const ll=lsdToLatLon(o);
+    if(!ll){toast('Not found in the grid');return;}
+    map.setView([ll.lat,ll.lon], S.spotType==='lsd'?17:16);closeSheets();
+  };
+  $('#bGoto').onclick=()=>{ S.active='spot'; all(); openSheet('sheetGoto'); };
+  all();
+})();
 
 /* ---------- Pins ---------- */
 let pinLayer=L.layerGroup().addTo(map);
