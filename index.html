@@ -127,8 +127,8 @@
 <div class="sheet" id="sheetGoto">
   <button class="close" data-close>&times;</button>
   <h2>Go to a location</h2>
-  <div class="hint">Enter a legal land description and the map will centre on its LSD, or jump to a decimal lat/lon.</div>
-  <div class="row"><label>LSD</label><input type="text" id="inLsd" placeholder="07-23-052-14 W4" autocapitalize="characters"></div>
+  <div class="hint">Enter a full LSD or a quarter section — e.g. <b>(SE) 07-23-52-14-W4M</b> or <b>SE 23-52-14 W4M</b> — and the map centres on it (exact, from the ATS grid). Or jump to a decimal lat/lon.</div>
+  <div class="row"><label>LSD / Qtr</label><input type="text" id="inLsd" placeholder="(SE) 07-23-52-14-W4M" autocapitalize="characters"></div>
   <div class="row"><button class="act amber" id="goLsd">Centre on LSD</button></div>
   <div style="height:1px;background:var(--line);margin:12px 0"></div>
   <div class="row"><label>Lat</label><input type="number" id="inLat" placeholder="53.5461" step="any"></div>
@@ -274,20 +274,40 @@ function latlonToLSDapprox(lat,lon){
   const lsd=(rr%2===0)?rr*4+1+cc:rr*4+4-cc;
   return {lsd,sec,twp,rge,mer:gov.n};
 }
-function lsdToLatLonApprox({lsd,sec,twp,rge,mer}){
+function lsdToLatLonApprox({qtr,lsd,sec,twp,rge,mer}){
   const gov=MERIDIANS.find(m=>m.n===mer); if(!gov) return null;
   const r=Math.floor((sec-1)/6), c=(r%2===0)?(sec-(r*6+1)):(r*6+6-sec);
-  const rr=Math.floor((lsd-1)/4), cc=(rr%2===0)?(lsd-(rr*4+1)):(rr*4+4-lsd);
-  const fN=(r+(rr+0.5)/4)/6, fE=(c+(cc+0.5)/4)/6;
+  let subN=0.5, subFromE=0.5;
+  if(lsd){ const rr=Math.floor((lsd-1)/4), cc=(rr%2===0)?(lsd-(rr*4+1)):(rr*4+4-lsd);
+    subN=(rr+0.5)/4; subFromE=(cc+0.5)/4; }
+  else if(qtr){ subN=qtr.indexOf('N')>=0?0.75:0.25; subFromE=qtr.indexOf('E')>=0?0.25:0.75; }
+  const fN=(r+subN)/6, fE=(c+subFromE)/6;
   const lat=49.0+(twp-1+fN)*TWP_DLAT, lon=gov.lon-((rge-1)+fE)*rangeWidthDeg(lat);
   return {lat,lon};
 }
+// quarter section (NE/NW/SE/SW), derived from the LSD's position within the section
+function quarterFromLsd(lsd){
+  const rr=Math.floor((lsd-1)/4);
+  const ce=(rr%2===0)?(lsd-(rr*4+1)):(rr*4+4-lsd); // column from east, 0..3
+  return (rr>=2?'N':'S')+(ce<=1?'E':'W');
+}
 const fmtLSD=o=>{ if(!o) return '—';
-  const p=(n,w=2)=>String(n).padStart(w,'0');
-  return `${p(o.lsd)}-${p(o.sec)}-${p(o.twp,3)}-${p(o.rge,2)} W${o.mer}`; };
+  const p=n=>String(n).padStart(2,'0');
+  const q=o.lsd?'('+quarterFromLsd(o.lsd)+') ':'';
+  return `${q}${p(o.lsd)}-${p(o.sec)}-${p(o.twp)}-${p(o.rge)}-W${o.mer}M`; };
+// accepts a full LSD or a quarter-section, e.g. "(SE) 07-23-52-14-W4M" or "SE 23-52-14 W4M"
 const parseLSD=str=>{
-  const m=str.toUpperCase().match(/(\d{1,2})\D+(\d{1,2})\D+(\d{1,3})\D+(\d{1,2})\D*W?\s*(\d)/);
-  return m?{lsd:+m[1],sec:+m[2],twp:+m[3],rge:+m[4],mer:+m[5]}:null; };
+  let s=str.toUpperCase().trim();
+  const qm=s.match(/(NE|NW|SE|SW)/); const qtr=qm?qm[1]:null;
+  if(qm) s=s.slice(0,qm.index)+' '+s.slice(qm.index+2);
+  const mm=s.match(/W\s*0*(\d)\s*M?/); if(!mm) return null;
+  const mer=+mm[1];
+  s=s.slice(0,mm.index)+' '+s.slice(mm.index+mm[0].length);
+  const nums=(s.match(/\d+/g)||[]).map(Number);
+  if(nums.length>=4) return {qtr,lsd:nums[0],sec:nums[1],twp:nums[2],rge:nums[3],mer};
+  if(nums.length===3) return {qtr,sec:nums[0],twp:nums[1],rge:nums[2],mer};
+  return null;
+};
 
 /* ---------- Exact LSD via official ATS section grid (ats_grid.bin) ---------- */
 let GRID=null;
@@ -353,6 +373,7 @@ function lsdToLatLonExact(o){
   if(o.lsd){const rr=Math.floor((o.lsd-1)/4);
     const ce=(rr%2===0)?(o.lsd-(rr*4+1)):(rr*4+4-o.lsd);
     u=1-(ce+0.5)/4;v=(rr+0.5)/4;}
+  else if(o.qtr){ u=o.qtr.indexOf('E')>=0?0.75:0.25; v=o.qtr.indexOf('N')>=0?0.75:0.25; }
   return {lat:(1-u)*(1-v)*SW[0]+u*(1-v)*SE[0]+(1-u)*v*NW[0]+u*v*NE[0],
           lon:(1-u)*(1-v)*SW[1]+u*(1-v)*SE[1]+(1-u)*v*NW[1]+u*v*NE[1]};
 }
@@ -429,9 +450,11 @@ map.on('click',e=>{
 /* ---------- Go to ---------- */
 $('#bGoto').onclick=()=>openSheet('sheetGoto');
 $('#goLsd').onclick=()=>{
-  const o=parseLSD($('#inLsd').value); if(!o){ toast('Format: 07-23-052-14 W4'); return; }
-  const ll=lsdToLatLon(o); if(!ll){ toast('Bad LSD'); return; }
-  map.setView([ll.lat,ll.lon],16); closeSheets();
+  const o=parseLSD($('#inLsd').value);
+  if(!o){ toast('Try e.g.  (SE) 07-23-52-14-W4M'); return; }
+  const ll=lsdToLatLon(o);
+  if(!ll){ toast('Not found in the ATS grid'); return; }
+  map.setView([ll.lat,ll.lon], o.lsd?17:16); closeSheets();
 };
 $('#goCoord').onclick=()=>{
   const la=parseFloat($('#inLat').value), lo=parseFloat($('#inLon').value);
