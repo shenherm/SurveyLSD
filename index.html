@@ -314,27 +314,32 @@ let GRID=null;
 const CELL=0.02;
 const cellKey=(cx,cy)=>cx*100000+cy;
 const descKey=(m,r,t,s)=>((m*1000+r)*1000+t)*100+s;
-function parseGrid(buf){
-  const dv=new DataView(buf);
-  if(String.fromCharCode(dv.getUint8(0),dv.getUint8(1),dv.getUint8(2),dv.getUint8(3))!=='ATS1')
-    throw new Error('bad grid file');
-  const count=dv.getUint32(4,true);
+function parseGridMulti(buffers){
+  const parts=[]; let count=0;
+  for(const buf of buffers){ if(!buf) continue;
+    const dv=new DataView(buf);
+    if(String.fromCharCode(dv.getUint8(0),dv.getUint8(1),dv.getUint8(2),dv.getUint8(3))!=='ATS1') continue;
+    const c=dv.getUint32(4,true); parts.push({dv,c}); count+=c; }
   const cor=new Int32Array(count*8);
   const mer=new Uint8Array(count),rge=new Uint16Array(count),twp=new Uint16Array(count),sec=new Uint8Array(count);
   const bucket=new Map(),byKey=new Map();
-  let off=8;
-  for(let i=0;i<count;i++){
-    const m=dv.getUint8(off);off+=1;const r=dv.getUint16(off,true);off+=2;
-    const t=dv.getUint16(off,true);off+=2;const s=dv.getUint8(off);off+=1;
-    mer[i]=m;rge[i]=r;twp[i]=t;sec[i]=s;
-    let minLa=1/0,maxLa=-1/0,minLo=1/0,maxLo=-1/0;
-    for(let k=0;k<8;k++){cor[i*8+k]=dv.getInt32(off,true);off+=4;}
-    for(let k=0;k<8;k+=2){const la=cor[i*8+k]/1e6,lo=cor[i*8+k+1]/1e6;
-      if(la<minLa)minLa=la;if(la>maxLa)maxLa=la;if(lo<minLo)minLo=lo;if(lo>maxLo)maxLo=lo;}
-    for(let cx=Math.floor(minLo/CELL);cx<=Math.floor(maxLo/CELL);cx++)
-      for(let cy=Math.floor(minLa/CELL);cy<=Math.floor(maxLa/CELL);cy++){
-        const ck=cellKey(cx,cy);let a=bucket.get(ck);if(!a){a=[];bucket.set(ck,a);}a.push(i);}
-    byKey.set(descKey(m,r,t,s),i);
+  let i=0;
+  for(const {dv,c} of parts){
+    let off=8;
+    for(let j=0;j<c;j++){
+      const m=dv.getUint8(off);off+=1;const r=dv.getUint16(off,true);off+=2;
+      const t=dv.getUint16(off,true);off+=2;const s=dv.getUint8(off);off+=1;
+      mer[i]=m;rge[i]=r;twp[i]=t;sec[i]=s;
+      let minLa=1/0,maxLa=-1/0,minLo=1/0,maxLo=-1/0;
+      for(let k=0;k<8;k++){cor[i*8+k]=dv.getInt32(off,true);off+=4;}
+      for(let k=0;k<8;k+=2){const la=cor[i*8+k]/1e6,lo=cor[i*8+k+1]/1e6;
+        if(la<minLa)minLa=la;if(la>maxLa)maxLa=la;if(lo<minLo)minLo=lo;if(lo>maxLo)maxLo=lo;}
+      for(let cx=Math.floor(minLo/CELL);cx<=Math.floor(maxLo/CELL);cx++)
+        for(let cy=Math.floor(minLa/CELL);cy<=Math.floor(maxLa/CELL);cy++){
+          const ck=cellKey(cx,cy);let a=bucket.get(ck);if(!a){a=[];bucket.set(ck,a);}a.push(i);}
+      byKey.set(descKey(m,r,t,s),i);
+      i++;
+    }
   }
   return {count,cor,mer,rge,twp,sec,bucket,byKey};
 }
@@ -380,10 +385,16 @@ function lsdToLatLonExact(o){
 // unified: exact when grid is loaded, approximate as fallback while loading
 function latlonToLSD(la,lo){ return GRID?latlonToLSDexact(la,lo):latlonToLSDapprox(la,lo); }
 function lsdToLatLon(o){ if(GRID){const e=lsdToLatLonExact(o);if(e)return e;} return lsdToLatLonApprox(o); }
-// load the grid (sits next to index.html on the server)
-fetch('ats_grid.bin').then(r=>{if(!r.ok)throw 0;return r.arrayBuffer();})
-  .then(buf=>{GRID=parseGrid(buf);updateReadout();toast('Exact LSD grid loaded — '+GRID.count.toLocaleString()+' sections');})
-  .catch(()=>{/* offline or missing: keep the approximate readout */});
+// load the grids (Alberta + Saskatchewan), both sit next to index.html on the server
+Promise.all([
+  fetch('ats_grid.bin').then(r=>r.ok?r.arrayBuffer():null).catch(()=>null),
+  fetch('sk_grid.bin').then(r=>r.ok?r.arrayBuffer():null).catch(()=>null)
+]).then(bufs=>{
+  if(!bufs.some(Boolean)) return;            // offline or missing: keep approximate
+  GRID=parseGridMulti(bufs);
+  updateReadout();
+  toast('Exact LSD grid loaded — '+GRID.count.toLocaleString()+' sections');
+}).catch(()=>{});
 
 /* ---------- Readout ---------- */
 function updateReadout(){
