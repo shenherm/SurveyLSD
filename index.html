@@ -17,7 +17,7 @@
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
     font-family:-apple-system,system-ui,"SF Pro Text",Segoe UI,Roboto,sans-serif;overflow:hidden}
-  #map{position:absolute;inset:0;z-index:0;background:#000}
+  #map{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;background:#000}
 
   #readout{position:absolute;top:0;left:0;right:0;z-index:500;
     padding:max(8px,env(safe-area-inset-top)) 12px 8px;
@@ -84,7 +84,7 @@
     background:#3a1212;border:1px solid var(--warn);color:#ffd9d9;border-radius:10px;
     padding:9px 12px;font-size:12px;line-height:1.4}
   #banner.show{display:block}
-  #boot{position:absolute;inset:0;z-index:900;display:flex;align-items:center;justify-content:center;
+  #boot{position:absolute;top:0;right:0;bottom:0;left:0;z-index:900;display:flex;align-items:center;justify-content:center;
     background:var(--bg);color:var(--muted);font-size:13px}
   .leaflet-control-attribution{font-size:9px !important;background:rgba(0,0,0,.5) !important;color:#aaa !important}
   .leaflet-bar a,.leaflet-control-layers{background:var(--panel) !important;color:var(--ink) !important;border-color:var(--line) !important}
@@ -94,6 +94,28 @@
 </style>
 </head>
 <body>
+<script>
+/* Early diagnostic: shows any script/load error on screen (older Safari has no visible console). ES5 only. */
+(function(){
+  function show(msg){
+    try{
+      var b=document.getElementById('errbox');
+      if(!b){ b=document.createElement('div'); b.id='errbox';
+        b.style.cssText='position:fixed;left:0;right:0;top:0;z-index:99999;background:#3a1212;color:#ffd9d9;font:12px ui-monospace,Menlo,monospace;padding:10px 12px;white-space:pre-wrap;border-bottom:2px solid #c0392b;max-height:55%;overflow:auto';
+        (document.body||document.documentElement).appendChild(b);
+      }
+      b.appendChild(document.createTextNode(msg+'\n'));
+    }catch(e){}
+  }
+  window.onerror=function(m,src,line,col){ show('JS error: '+m+(line?(' @ line '+line+':'+col):'')); return false; };
+  window.addEventListener('error',function(e){
+    if(e&&e.target&&(e.target.src||e.target.href)) show('Failed to load: '+(e.target.src||e.target.href));
+  },true);
+  window.addEventListener('unhandledrejection',function(e){
+    var r=e&&e.reason; show('Promise error: '+((r&&r.message)||r||'unknown'));
+  });
+})();
+</script>
 <div id="map"></div>
 <div id="cross"><div class="dot"></div></div>
 
@@ -507,7 +529,7 @@ $('#bMeasure').onclick=()=>{ measuring=!measuring; $('#bMeasure').classList.togg
 map.on('click',e=>{
   if(!measuring) return;
   if(mMarkers.length>=2) mClear();   // a fresh tap after a pair starts over
-  mAddPoint(e.latlng);
+  mAddPoint(map.getCenter());        // drop under the centre crosshair for precision
 });
 
 /* ---------- Go to (cockpit pad) ---------- */
@@ -671,15 +693,15 @@ function drawKml(item){
   doc.querySelectorAll('Style').forEach(s=>{ const id=s.getAttribute('id');
     const lc=s.querySelector('LineStyle > color'); if(id&&lc) styles['#'+id]=kmlColorToHex(lc.textContent); });
   doc.querySelectorAll('StyleMap').forEach(sm=>{ const id=sm.getAttribute('id');
-    const norm=[...sm.querySelectorAll('Pair')].find(p=>p.querySelector('key')?.textContent==='normal');
-    const url=norm?.querySelector('styleUrl')?.textContent?.trim();
+    const norm=[].slice.call(sm.querySelectorAll('Pair')).find(p=>{const k=p.querySelector('key');return k&&k.textContent==='normal';});
+    const su0=norm&&norm.querySelector('styleUrl'); const url=su0?su0.textContent.trim():'';
     if(id&&url&&styles[url]) styles['#'+id]=styles[url]; });
   let bounds=[];
   doc.querySelectorAll('Placemark').forEach(pm=>{
-    const name=pm.querySelector('name')?.textContent?.trim()||'';
-    const su=pm.querySelector('styleUrl')?.textContent?.trim();
+    const nmEl=pm.querySelector('name'); const name=nmEl?nmEl.textContent.trim():'';
+    const suEl=pm.querySelector('styleUrl'); const su=suEl?suEl.textContent.trim():'';
     const inlineLc=pm.querySelector('LineStyle > color');
-    const color=kmlColorToHex(inlineLc?.textContent)||(su&&styles[su])||item.color||'#ffd24a';
+    const color=kmlColorToHex(inlineLc?inlineLc.textContent:'')||(su&&styles[su])||item.color||'#ffd24a';
     pm.querySelectorAll('LineString > coordinates').forEach(co=>{
       const pts=parseCoords(co.textContent);
       if(pts.length){ L.polyline(pts,{color,weight:3,opacity:.95}).addTo(grp); bounds=bounds.concat(pts); }});
