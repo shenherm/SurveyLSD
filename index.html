@@ -383,7 +383,7 @@ function lsdToLatLonExact(o){
           lon:(1-u)*(1-v)*SW[1]+u*(1-v)*SE[1]+(1-u)*v*NW[1]+u*v*NE[1]};
 }
 // unified: exact when grid is loaded, approximate as fallback while loading
-function latlonToLSD(la,lo){ return GRID?latlonToLSDexact(la,lo):latlonToLSDapprox(la,lo); }
+function latlonToLSD(la,lo){ if(GRID){const e=latlonToLSDexact(la,lo);if(e)return e;} return latlonToLSDapprox(la,lo); }
 function lsdToLatLon(o){ if(GRID){const e=lsdToLatLonExact(o);if(e)return e;} return lsdToLatLonApprox(o); }
 // load the grids (Alberta + Saskatchewan), both sit next to index.html on the server
 Promise.all([
@@ -404,8 +404,12 @@ function updateReadout(){
   $('#zlvl').textContent='z'+map.getZoom().toFixed(1);
   if(GRID){
     const o=latlonToLSDexact(c.lat,c.lng);
-    $('#lsd').innerHTML = o ? fmtLSD(o)
-      : '<span style="color:var(--muted);font-size:.62em">— outside ATS grid —</span>';
+    if(o){ $('#lsd').innerHTML = fmtLSD(o); }
+    else {
+      const a=latlonToLSDapprox(c.lat,c.lng);
+      $('#lsd').innerHTML = a ? fmtLSD(a)+' <span class="approx">≈ approx</span>'
+        : '<span style="color:var(--muted);font-size:.62em">— outside survey —</span>';
+    }
   } else {
     const o=latlonToLSDapprox(c.lat,c.lng);
     $('#lsd').innerHTML = fmtLSD(o)+' <span class="approx">≈ approx</span>';
