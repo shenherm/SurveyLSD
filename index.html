@@ -861,7 +861,7 @@ async function installBuiltins(){
     let geom; try{ const g=await fetch('lines/'+ln.file,{cache:'no-store'}); if(!g.ok) continue; geom=await g.json(); }
     catch(e){ continue; }
     try{ await idbPut(ln.id,geom); }catch(e){ continue; }
-    if(!exists){ kmls.push({id:ln.id,name:ln.name,on:true,color:null,width:0,order:0,builtin:true,bv:ln.v}); }
+    if(!exists){ kmls.push({id:ln.id,name:ln.name,on:(ln.on===false?false:true),color:null,width:0,order:0,builtin:true,bv:ln.v}); }
     else { exists.builtin=true; exists.bv=ln.v;
       if(kmlLayers[ln.id]){ map.removeLayer(kmlLayers[ln.id].grp); delete kmlLayers[ln.id]; } }
     kmlInstalled[ln.id]=ln.v; changed=true;

@@ -1,5 +1,5 @@
 {
- "version": 2,
+ "version": 3,
  "lines": [
   {
    "id": "builtin_coed_south_cremona",
@@ -24,6 +24,13 @@
    "name": "Redwater",
    "file": "redwater.json",
    "v": 2
+  },
+  {
+   "id": "builtin_envirotech_full",
+   "name": "Envirotech Patrols \u2014 full network",
+   "file": "envirotech_patrols.json",
+   "v": 1,
+   "on": false
   }
  ]
 }
