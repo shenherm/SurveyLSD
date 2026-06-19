@@ -812,11 +812,19 @@ function clipLine(p,s,n,w,e){
     prev=code; }
   return runs;
 }
+const CULL_MIN_Z=10;   // below this, large layers hide (mush + heaviest to draw)
+let _zoomHintAt=0;
 function cullRedraw(L0){
   const item=L0.item, b=map.getBounds().pad(0.35);
   const s=b.getSouth(), n=b.getNorth(), w=b.getWest(), e=b.getEast();
   if(L0.linePolys) for(let i=0;i<L0.linePolys.length;i++) L0.grp.removeLayer(L0.linePolys[i]);
-  const z=map.getZoom(), sf=z>=13?2:z>=11?3:z>=9?4:6, groups={}, F=L0.feats;
+  L0.linePolys=[];
+  if(map.getZoom()<CULL_MIN_Z){                       // zoomed too far out: draw nothing
+    L0.polys=(L0.pointPolys||[]);
+    if(map.hasLayer(L0.grp)){ const now=Date.now(); if(now-_zoomHintAt>8000){ _zoomHintAt=now; toast('"'+item.name+'" hides when zoomed out — zoom in to show it'); } }
+    return;
+  }
+  const z=map.getZoom(), sf=z>=13?2:z>=11?3:4, groups={}, F=L0.feats;
   for(let i=0;i<F.length;i++){ const f=F[i], bb=f.bb;
     if(bb[2]<s||bb[0]>n||bb[3]<w||bb[1]>e) continue;           // bbox not near view
     const runs=clipLine(f.p,s,n,w,e); if(!runs.length) continue;
