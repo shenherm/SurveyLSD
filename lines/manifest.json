@@ -1,0 +1,29 @@
+{
+ "version": 1,
+ "lines": [
+  {
+   "id": "builtin_coed_south_cremona",
+   "name": "Co-Ed South Cremona",
+   "file": "coed_south_cremona.json",
+   "v": 1
+  },
+  {
+   "id": "builtin_rangeland_gathering_cremona",
+   "name": "Rangeland Gathering Cremona",
+   "file": "rangeland_gathering_cremona.json",
+   "v": 1
+  },
+  {
+   "id": "builtin_rangeland_sundre_gathering",
+   "name": "Rangeland Sundre Gathering",
+   "file": "rangeland_sundre_gathering.json",
+   "v": 1
+  },
+  {
+   "id": "builtin_redwater",
+   "name": "Redwater",
+   "file": "redwater.json",
+   "v": 1
+  }
+ ]
+}
