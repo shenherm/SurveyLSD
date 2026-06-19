@@ -30,6 +30,11 @@
   #coords{margin-top:3px;font-family:"SF Mono",ui-monospace,Menlo,monospace;
     font-size:clamp(11px,3.4vw,14px);color:var(--muted)}
   #coords b{color:var(--ink);font-weight:600}
+  #elev{margin-top:2px;font-family:"SF Mono",ui-monospace,Menlo,monospace;
+    font-size:clamp(11px,3.4vw,14px);color:var(--muted)}
+  #elev b{color:var(--ink);font-weight:600}
+  #elev .esep{opacity:.35}
+  #elev .agl b{color:#3ddc84}
 
   #cross{position:absolute;top:50%;left:50%;z-index:450;
     width:46px;height:46px;margin:-23px 0 0 -23px;pointer-events:none}
@@ -122,6 +127,7 @@
 <div id="readout">
   <div id="lsd">—</div>
   <div id="coords"><b id="lat">—</b> &nbsp; <b id="lon">—</b> &nbsp; <span id="zlvl"></span></div>
+  <div id="elev">Grd <b>—</b></div>
 </div>
 
 <div id="banner"></div>
@@ -510,7 +516,9 @@ $('#bGps').onclick=()=>{
   if(!navigator.geolocation){ toast('No geolocation on this device'); return; }
   following=true; $('#bGps').classList.add('on');
   watchId=navigator.geolocation.watchPosition(pos=>{
-    const {latitude,longitude,accuracy}=pos.coords, ll=[latitude,longitude];
+    const {latitude,longitude,accuracy,altitude}=pos.coords, ll=[latitude,longitude];
+    gpsAltM=(altitude!=null&&isFinite(altitude))?altitude:null;
+    fetchElev(latitude,longitude).then(m=>{ gpsGroundM=m; renderElev(); }); renderElev();
     if(!gpsMarker){
       gpsMarker=L.circleMarker(ll,{radius:7,color:'#04101f',weight:2,fillColor:'#3ddc84',fillOpacity:1}).addTo(map);
       gpsCircle=L.circle(ll,{radius:accuracy,color:'#3ddc84',weight:1,fillColor:'#3ddc84',fillOpacity:.08}).addTo(map);
@@ -522,8 +530,52 @@ $('#bGps').onclick=()=>{
   }, {enableHighAccuracy:true,maximumAge:1000,timeout:15000});
 };
 function stopGps(){ following=false; $('#bGps').classList.remove('on');
-  if(watchId!=null) navigator.geolocation.clearWatch(watchId); watchId=null; }
+  if(watchId!=null) navigator.geolocation.clearWatch(watchId); watchId=null;
+  gpsAltM=null; gpsGroundM=null; renderElev(); }
 map.on('dragstart',()=>{ if(following){ following=false; $('#bGps').classList.remove('on'); }});
+
+/* ---------- Ground elevation + altitude (ft) ---------- */
+const M2FT=3.28084;
+function fmtFt(m){ return m==null?'—':Math.round(m*M2FT).toLocaleString()+' ft'; }
+function fmtFt10(m){ return m==null?'—':(Math.round(m*M2FT/10)*10).toLocaleString()+' ft'; }
+const elevCache={}, elevPending={};
+function elevKey(la,lo){ return la.toFixed(3)+','+lo.toFixed(3); }   // ~110 m grid
+function openMeteoElev(la,lo){
+  return fetch('https://api.open-meteo.com/v1/elevation?latitude='+la.toFixed(4)+'&longitude='+lo.toFixed(4))
+    .then(r=>r.ok?r.json():null).then(j=>{ const a=j&&j.elevation; return (a&&a.length&&isFinite(a[0]))?a[0]:null; })
+    .catch(()=>null);
+}
+function esriElev(la,lo){            // fallback: elevation-enabled Esri key
+  if(!esriKey) return Promise.resolve(null);
+  const g=encodeURIComponent(JSON.stringify({x:lo,y:la,spatialReference:{wkid:4326}}));
+  return fetch('https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer/identify?f=json&returnGeometry=false&geometryType=esriGeometryPoint&geometry='+g+'&token='+encodeURIComponent(esriKey))
+    .then(r=>r.ok?r.json():null).then(j=>{ const v=j&&j.value!=null?parseFloat(j.value):NaN; return isFinite(v)?v:null; })
+    .catch(()=>null);
+}
+function fetchElev(la,lo){
+  const k=elevKey(la,lo);
+  if(k in elevCache) return Promise.resolve(elevCache[k]);
+  if(elevPending[k]) return elevPending[k];
+  const p=openMeteoElev(la,lo).then(m=>m!=null?m:esriElev(la,lo)).then(m=>{
+    delete elevPending[k]; if(m!=null) elevCache[k]=m; return m; });   // only cache real values, so it retries after going back online
+  elevPending[k]=p; return p;
+}
+let crossGroundM=null, gpsAltM=null, gpsGroundM=null;
+function renderElev(){
+  const el=$('#elev'); if(!el) return;
+  let h='Grd <b>'+fmtFt(crossGroundM)+'</b>';
+  if(gpsAltM!=null){
+    h+=' <span class="esep">·</span> Alt <b>'+fmtFt10(gpsAltM)+'</b>';
+    const g=(gpsGroundM!=null)?gpsGroundM:(following?crossGroundM:null);
+    if(g!=null) h+=' <span class="esep">·</span> <span class="agl">AGL <b>'+fmtFt10(gpsAltM-g)+'</b></span>';
+  }
+  el.innerHTML=h;
+}
+let elevTimer=null;
+function scheduleElev(){ if(elevTimer) clearTimeout(elevTimer);
+  elevTimer=setTimeout(()=>{ const c=map.getCenter();
+    fetchElev(c.lat,c.lng).then(m=>{ crossGroundM=m; renderElev(); }); },350); }
+map.on('moveend zoomend',scheduleElev); scheduleElev(); renderElev();
 
 /* ---------- Measure (draggable endpoints) ---------- */
 let measuring=false, mMarkers=[], mLine=null, mLabel=null, mLayer=L.layerGroup().addTo(map);
