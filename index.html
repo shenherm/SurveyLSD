@@ -109,7 +109,7 @@
   }
   window.onerror=function(m,src,line,col){ show('JS error: '+m+(line?(' @ line '+line+':'+col):'')); return false; };
   window.addEventListener('error',function(e){
-    if(e&&e.target&&(e.target.src||e.target.href)) show('Failed to load: '+(e.target.src||e.target.href));
+    if(e&&e.target&&e.target.tagName==='SCRIPT'&&e.target.src) show('Failed to load script: '+e.target.src);
   },true);
   window.addEventListener('unhandledrejection',function(e){
     var r=e&&e.reason; show('Promise error: '+((r&&r.message)||r||'unknown'));
@@ -279,8 +279,8 @@ const esri=L.tileLayer(esriUrl(),{maxZoom:21,maxNativeZoom:19,attribution:ESRI_A
 // the pre-built MBTiles pack (build_offline_base.py) will make this work with no signal.
 const S2_YEAR='2024';
 const s2attr='Sentinel-2 cloudless '+S2_YEAR+' &copy; EOX IT Services GmbH (modified Copernicus Sentinel data)';
-const s2=L.tileLayer('https://{s}.s2maps-tiles.eu/wmts/1.0.0/s2cloudless-'+S2_YEAR+'_3857/default/g/{z}/{y}/{x}.jpg',
-  {maxZoom:21,maxNativeZoom:14,subdomains:'abcdefgh',attribution:s2attr});
+const s2=L.tileLayer('https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-'+S2_YEAR+'_3857/default/g/{z}/{y}/{x}.jpg',
+  {maxZoom:21,maxNativeZoom:14,attribution:s2attr});
 
 const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'});
 
