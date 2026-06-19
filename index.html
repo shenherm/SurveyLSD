@@ -212,6 +212,8 @@
 .kacts{display:flex;gap:8px;margin-top:14px}
 .ksl{flex:1;min-height:42px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:var(--ink);font-size:13px;font-weight:600;cursor:pointer}
 .ksl.del{color:var(--warn);border-color:#5a3236}
+.kbadge{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--accent);border:1px solid var(--line);border-radius:4px;padding:1px 4px;vertical-align:middle}
+.act.ghost{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
 </style>
 <div class="sheet" id="sheetKml">
   <button class="close" data-close>&times;</button>
@@ -219,9 +221,11 @@
   <div class="row">
     <button class="act" id="importBtn">Import KML / KMZ</button>
     <input type="file" id="fileIn" accept=".kml,.kmz,application/vnd.google-earth.kml+xml" style="display:none">
+    <input type="file" id="replaceIn" accept=".kml,.kmz,application/vnd.google-earth.kml+xml" style="display:none">
   </div>
-  <div class="hint">Tap the toggle to show/hide a file. Tap its name to open <b>colour</b>, <b>thickness</b> and draw-order controls — and use ▲ ▼ to lift one line above another where pipelines overlap. Large files are stored on this device.</div>
+  <div class="hint">Tap the toggle to show/hide a file. Tap its name to open <b>colour</b>, <b>thickness</b> and draw-order controls — and use ▲ ▼ to lift one line above another where pipelines overlap. Built-in lines load automatically; imported files and all edits are stored on this device. Imported lines are thinned to a 10&nbsp;cm tolerance (well below GPS accuracy) for fast drawing, keeping every bend.</div>
   <div id="kmlList"><div class="empty">No KML imported yet.</div></div>
+  <div class="row" style="margin-top:10px"><button class="act ghost" id="restoreBtn">Restore built-in lines</button></div>
 </div>
 
 <div class="sheet" id="sheetPin">
@@ -700,6 +704,9 @@ $('#clearPins').onclick=()=>{ if(!pins.length){toast('No pins');return;}
    ============================================================ */
 let kmls=JSON.parse(localStorage.getItem('kmls')||'[]');   // {id,name,on,color,width,order}
 const kmlLayers={};                                        // id -> {grp,renderer,polys,bounds}
+const kmlLoading={};                                        // id -> in-progress guard
+let kmlInstalled=JSON.parse(localStorage.getItem('kmlBuiltins')||'{}');  // builtin id -> version
+let kmlDismissed=JSON.parse(localStorage.getItem('kmlDismissed')||'[]'); // removed built-in ids
 const PALETTE=['#ffd24a','#ff9f43','#ff5d5d','#ff7ad9','#b48cff','#4fa3ff','#5ce0d8','#3ddc84','#ffffff','#9aa7b2'];
 const KML_Z_BASE=350;
 let kmlExpanded=null;
@@ -724,6 +731,26 @@ function parseCoordStr(txt){ const out=[], toks=txt.trim().split(/\s+/);
     const lo=parseFloat(p[0]), la=parseFloat(p[1]);
     if(isFinite(la)&&isFinite(lo)) out.push([la,lo]); }
   return out; }
+/* Lossless redundant-vertex removal: drop only points lying within SIMP_EPS
+   metres of the straight line between kept neighbours (Web-Mercator, the space
+   the map draws in). Every real vertex is kept at full precision. */
+const SIMP_EPS=0.1;   // 10 cm — far below the iPad's GPS accuracy, invisible from altitude
+const MERC_R=6378137;
+function mercXY(la,lo){ return [MERC_R*lo*Math.PI/180,
+  MERC_R*Math.log(Math.tan(Math.PI/4+la*Math.PI/360))]; }
+function perpM(p,a,b){ const dx=b[0]-a[0], dy=b[1]-a[1];
+  if(dx===0&&dy===0) return Math.hypot(p[0]-a[0],p[1]-a[1]);
+  let t=((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy); t=t<0?0:t>1?1:t;
+  return Math.hypot(p[0]-(a[0]+t*dx), p[1]-(a[1]+t*dy)); }
+function simplifyLine(pts){
+  const n=pts.length; if(n<3) return pts;
+  const m=new Array(n); for(let i=0;i<n;i++) m[i]=mercXY(pts[i][0],pts[i][1]);
+  const keep=new Uint8Array(n); keep[0]=keep[n-1]=1; const st=[[0,n-1]];
+  while(st.length){ const seg=st.pop(), s=seg[0], e=seg[1]; let dmax=-1, idx=-1;
+    for(let i=s+1;i<e;i++){ const d=perpM(m[i],m[s],m[e]); if(d>dmax){ dmax=d; idx=i; } }
+    if(dmax>SIMP_EPS && idx!==-1){ keep[idx]=1; st.push([s,idx]); st.push([idx,e]); } }
+  const out=[]; for(let i=0;i<n;i++) if(keep[i]) out.push(pts[i]); return out;
+}
 function parseKml(text){
   const styles={}; let m;
   const sre=/<Style\b[^>]*\bid="([^"]+)"[^>]*>([\s\S]*?)<\/Style>/g;
@@ -746,7 +773,7 @@ function parseKml(text){
     const nmm=/<name>\s*([\s\S]*?)\s*<\/name>/.exec(b);
     const nm=nmm?nmm[1].replace(/<!\[CDATA\[|\]\]>/g,'').trim():'';
     let lm; const lre=/<LineString\b[^>]*>[\s\S]*?<coordinates\b[^>]*>([\s\S]*?)<\/coordinates>/g;
-    while((lm=lre.exec(b))){ const pts=parseCoordStr(lm[1]); if(pts.length) lines.push({c:color,w:width,p:pts}); }
+    while((lm=lre.exec(b))){ const pts=parseCoordStr(lm[1]); if(pts.length) lines.push({c:color,w:width,p:simplifyLine(pts)}); }
     let pmt; const pre=/<Point\b[^>]*>[\s\S]*?<coordinates\b[^>]*>([\s\S]*?)<\/coordinates>/g;
     while((pmt=pre.exec(b))){ const pp=parseCoordStr(pmt[1]); if(pp.length) points.push({c:color,n:nm,ll:pp[0]}); } }
   return {lines,points};
@@ -763,15 +790,22 @@ function buildLayer(item,geom){
   const pn=ensurePane(item);
   const renderer=L.canvas({pane:pn,padding:.5});
   const grp=L.layerGroup(); const polys=[]; const bounds=L.latLngBounds([]);
+  /* group lines that share a base colour+width into a single multi-polyline.
+     thousands of separate polyline objects -> a handful, so Leaflet redraws
+     far fewer objects per pan/zoom. interactive:false skips hit-testing. */
+  const groups={};
   for(let i=0;i<geom.lines.length;i++){ const f=geom.lines[i];
-    const base=f.c||'#ffd24a', bw=f.w||3;
-    const pl=L.polyline(f.p,{renderer,color:item.color||base,weight:item.width||bw,opacity:.95,smoothFactor:1.6});
-    pl._baseColor=base; pl._baseWidth=bw; pl.addTo(grp); polys.push(pl);
+    const base=f.c||'#ffd24a', bw=f.w||3, key=base+'|'+bw;
+    let g=groups[key]; if(!g){ g=groups[key]={c:base,w:bw,seg:[]}; }
+    g.seg.push(f.p); }
+  for(const key in groups){ const g=groups[key];
+    const pl=L.polyline(g.seg,{renderer,color:item.color||g.c,weight:item.width||g.w,opacity:.95,smoothFactor:2,interactive:false});
+    pl._baseColor=g.c; pl._baseWidth=g.w; pl.addTo(grp); polys.push(pl);
     try{ bounds.extend(pl.getBounds()); }catch(e){} }
   for(let j=0;j<geom.points.length;j++){ const p=geom.points[j];
-    const cm=L.circleMarker(p.ll,{renderer,radius:5,color:'#000',weight:1,fillColor:item.color||p.c||'#ffd24a',fillOpacity:1});
+    const cm=L.circleMarker(p.ll,{renderer,radius:5,color:'#000',weight:1,fillColor:item.color||p.c||'#ffd24a',fillOpacity:1,interactive:false});
     cm._baseColor=p.c||'#ffd24a'; cm._isPoint=true; cm.addTo(grp); polys.push(cm);
-    if(p.n) L.marker(p.ll,{pane:pn,icon:L.divIcon({className:'place-label',html:p.n,iconSize:null,iconAnchor:[-7,6]})}).addTo(grp);
+    if(p.n) L.marker(p.ll,{pane:pn,interactive:false,icon:L.divIcon({className:'place-label',html:p.n,iconSize:null,iconAnchor:[-7,6]})}).addTo(grp);
     bounds.extend(L.latLng(p.ll)); }
   kmlLayers[item.id]={grp,renderer,polys,bounds:bounds.isValid()?bounds:null};
   if(item.on) grp.addTo(map);
@@ -785,9 +819,10 @@ function setOrders(){ for(let i=0;i<kmls.length;i++){ kmls[i].order=kmls.length-
 function moveKml(id,dir){ const i=kmls.findIndex(k=>k.id===id); const j=i+dir;
   if(i<0||j<0||j>=kmls.length) return; const t=kmls[i]; kmls[i]=kmls[j]; kmls[j]=t;
   setOrders(); saveKmls(); renderKmlList(); }
-function loadKmlGeom(item){ if(kmlLayers[item.id]) return Promise.resolve();
-  return idbGet(item.id).then(geom=>{ if(geom) buildLayer(item,geom); })
-    .catch(()=>{ toast('Could not load '+item.name+' from storage'); }); }
+function loadKmlGeom(item){ if(kmlLayers[item.id]||kmlLoading[item.id]) return Promise.resolve();
+  kmlLoading[item.id]=1;
+  return idbGet(item.id).then(geom=>{ delete kmlLoading[item.id]; if(geom&&!kmlLayers[item.id]) buildLayer(item,geom); })
+    .catch(()=>{ delete kmlLoading[item.id]; toast('Could not load '+item.name+' from storage'); }); }
 
 /* ---- import ---- */
 async function addKmlFromFile(file){
@@ -812,7 +847,49 @@ async function addKmlFromFile(file){
   toast('Imported '+item.name+' — '+geom.lines.length.toLocaleString()+' lines');
 }
 function saveKmls(){ try{ localStorage.setItem('kmls', JSON.stringify(kmls.map(k=>(
-  {id:k.id,name:k.name,on:k.on,color:k.color||null,width:k.width||0,order:k.order||0})))); }catch(e){} }
+  {id:k.id,name:k.name,on:k.on,color:k.color||null,width:k.width||0,order:k.order||0,builtin:k.builtin||false,bv:k.bv||0})))); }catch(e){} }
+
+/* ---- built-in library (bundled with the app, auto-installed per device) ---- */
+async function installBuiltins(){
+  let man; try{ const r=await fetch('lines/manifest.json',{cache:'no-store'}); if(!r.ok) return; man=await r.json(); }
+  catch(e){ return; }   // offline or not deployed — keep whatever is already installed
+  let changed=false;
+  for(const ln of man.lines){
+    if(kmlDismissed.indexOf(ln.id)>=0) continue;
+    const exists=kmls.find(k=>k.id===ln.id);
+    if(exists && kmlInstalled[ln.id]===ln.v){ exists.builtin=true; exists.bv=ln.v; continue; }
+    let geom; try{ const g=await fetch('lines/'+ln.file,{cache:'no-store'}); if(!g.ok) continue; geom=await g.json(); }
+    catch(e){ continue; }
+    try{ await idbPut(ln.id,geom); }catch(e){ continue; }
+    if(!exists){ kmls.push({id:ln.id,name:ln.name,on:true,color:null,width:0,order:0,builtin:true,bv:ln.v}); }
+    else { exists.builtin=true; exists.bv=ln.v;
+      if(kmlLayers[ln.id]){ map.removeLayer(kmlLayers[ln.id].grp); delete kmlLayers[ln.id]; } }
+    kmlInstalled[ln.id]=ln.v; changed=true;
+  }
+  if(changed){
+    localStorage.setItem('kmlBuiltins',JSON.stringify(kmlInstalled));
+    setOrders(); saveKmls();
+    for(const it of kmls){ if(it.on && !kmlLayers[it.id]) await loadKmlGeom(it); }
+    renderKmlList();
+  }
+}
+/* replace one layer's geometry from a freshly-picked file (this device only) */
+let replaceTargetId=null;
+async function replaceKmlFile(file){
+  const id=replaceTargetId; replaceTargetId=null; if(!id) return;
+  const item=kmls.find(k=>k.id===id); if(!item) return;
+  let xml=''; try{
+    if(/\.kmz$/i.test(file.name)){ await ensureJsZip(); const zip=await JSZip.loadAsync(file);
+      const kn=Object.keys(zip.files).find(n=>/\.kml$/i.test(n)); if(!kn){ toast('No .kml inside the .kmz'); return; }
+      xml=await zip.files[kn].async('string'); } else { xml=await file.text(); }
+  }catch(e){ toast('Could not read the file'); return; }
+  let geom; try{ geom=parseKml(xml); }catch(e){ toast('Could not parse the KML'); return; } xml='';
+  if(!geom.lines.length && !geom.points.length){ toast('No lines found in that file'); return; }
+  try{ await idbPut(id,geom); }catch(e){ toast('Storage error'); return; }
+  if(kmlLayers[id]){ map.removeLayer(kmlLayers[id].grp); delete kmlLayers[id]; }
+  buildLayer(item,geom); saveKmls(); renderKmlList();
+  toast('Replaced '+item.name+' — '+geom.lines.length.toLocaleString()+' lines');
+}
 
 /* ---- list UI ---- */
 function escapeHtml(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -825,7 +902,7 @@ function renderKmlList(){
     h+='<div class="krow" data-id="'+k.id+'"><div class="khead">';
     h+='<div class="toggle'+(k.on?' on':'')+'" data-act="toggle"><b></b></div>';
     h+='<div class="kswatch" style="background:'+swbg+'" data-act="expand"></div>';
-    h+='<div class="knm" data-act="expand">'+escapeHtml(k.name)+'</div>';
+    h+='<div class="knm" data-act="expand">'+escapeHtml(k.name)+(k.builtin?' <span class="kbadge">built-in</span>':'')+'</div>';
     h+='<button class="kbtn" data-act="up" title="Bring forward">▲</button>';
     h+='<button class="kbtn" data-act="down" title="Send back">▼</button></div>';
     if(kmlExpanded===k.id){
@@ -833,7 +910,7 @@ function renderKmlList(){
       h+='<button class="kpc orig'+(!k.color?' sel':'')+'" data-act="color" data-c="">orig</button>';
       for(let c=0;c<PALETTE.length;c++) h+='<button class="kpc'+(k.color===PALETTE[c]?' sel':'')+'" data-act="color" data-c="'+PALETTE[c]+'" style="background:'+PALETTE[c]+'"></button>';
       h+='</div><div class="kclbl">Thickness</div><div class="kw"><button class="kbtn" data-act="wminus">−</button><span class="kwv">'+(k.width||'orig')+'</span><button class="kbtn" data-act="wplus">+</button></div>';
-      h+='<div class="kacts"><button class="ksl" data-act="zoom">Zoom to</button><button class="ksl del" data-act="del">Delete</button></div></div>';
+      h+='<div class="kacts"><button class="ksl" data-act="zoom">Zoom to</button><button class="ksl" data-act="replace">Replace…</button><button class="ksl del" data-act="del">'+(k.builtin?'Remove':'Delete')+'</button></div></div>';
     }
     h+='</div>';
   }
@@ -857,8 +934,12 @@ $('#kmlList').addEventListener('click',e=>{
   if(act==='wplus'){ item.width=Math.min(12,(item.width||3)+1); if(kmlLayers[id]) applyStyle(item); saveKmls(); renderKmlList(); return; }
   if(act==='zoom'){ const go=()=>{ const l=kmlLayers[id]; if(l&&l.bounds){ map.fitBounds(l.bounds.pad(.1)); closeSheets(); } else toast('No geometry to zoom to'); };
     if(kmlLayers[id]) go(); else loadKmlGeom(item).then(go); return; }
+  if(act==='replace'){ replaceTargetId=id; $('#replaceIn').click(); return; }
   if(act==='del'){ if(kmlLayers[id]){ map.removeLayer(kmlLayers[id].grp); delete kmlLayers[id]; }
     const pane=map.getPane(paneName(id)); if(pane&&pane.parentNode) pane.parentNode.removeChild(pane);
+    if(item.builtin){ if(kmlDismissed.indexOf(id)<0) kmlDismissed.push(id);
+      localStorage.setItem('kmlDismissed',JSON.stringify(kmlDismissed));
+      delete kmlInstalled[id]; localStorage.setItem('kmlBuiltins',JSON.stringify(kmlInstalled)); }
     idbDel(id); kmls=kmls.filter(k=>k.id!==id); setOrders(); saveKmls(); kmlExpanded=null; renderKmlList(); return; }
 });
 $('#bKml').onclick=()=>{ renderKmlList(); openSheet('sheetKml'); };
@@ -868,8 +949,12 @@ $('#saveKey').onclick=()=>{ applyEsriKey($('#inKey').value);
 $('#clearKey').onclick=()=>{ applyEsriKey(''); $('#inKey').value=''; toast('Key cleared'); };
 $('#importBtn').onclick=()=>$('#fileIn').click();
 $('#fileIn').onchange=e=>{ const f=e.target.files[0]; if(f) addKmlFromFile(f); e.target.value=''; };
-/* startup: restore draw order + lazily draw the layers that were left on */
-(function(){ setOrders(); kmls.forEach(item=>{ if(item.on) loadKmlGeom(item); }); })();
+$('#replaceIn').onchange=e=>{ const f=e.target.files[0]; if(f) replaceKmlFile(f); e.target.value=''; };
+$('#restoreBtn').onclick=async()=>{ kmlDismissed=[]; localStorage.setItem('kmlDismissed','[]');
+  kmlInstalled={}; localStorage.setItem('kmlBuiltins','{}');
+  toast('Checking for built-in lines…'); await installBuiltins(); renderKmlList(); toast('Built-in lines restored'); };
+/* startup: restore draw order, draw layers left on, then sync the built-in library */
+(function(){ setOrders(); kmls.forEach(item=>{ if(item.on) loadKmlGeom(item); }); installBuiltins(); })();
 
 setTimeout(()=>map.invalidateSize(),200);
 } /* end initApp */
