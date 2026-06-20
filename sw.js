@@ -74,6 +74,10 @@ self.addEventListener('activate', function(event){
       }
       return null;
     }));
+    // ensure the runtime caches exist under the current names, so the page's
+    // one-click downloader writes to exactly the cache this worker reads from
+    await caches.open(TILES);
+    await caches.open(DATA);
     await self.clients.claim();
   })());
 });

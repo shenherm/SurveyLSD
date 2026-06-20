@@ -178,6 +178,29 @@
   <div class="row"><label>API key</label><input type="text" id="inKey" placeholder="AAPK…" autocapitalize="none" autocorrect="off"></div>
   <div class="row"><button class="act amber" id="saveKey">Save key</button>
     <button class="act" id="clearKey" style="background:var(--panel2);color:var(--ink)">Clear</button></div>
+
+  <div style="border-top:1px solid var(--line);margin:16px 0 12px"></div>
+  <h2 style="font-size:14px">Download imagery for this area</h2>
+  <div class="hint">Frame your patrol area on the map, pick a detail level, then tap once. Every tile in view is saved for offline use — no panning needed. Downloads the imagery layer that's currently showing.</div>
+  <div class="gp-chips" id="dlZoom" style="grid-template-columns:repeat(4,1fr)">
+    <button class="gp-chip" data-z="14"><b>14</b><s>light</s></button>
+    <button class="gp-chip on" data-z="15"><b>15</b><s>standard</s></button>
+    <button class="gp-chip" data-z="16"><b>16</b><s>detailed</s></button>
+    <button class="gp-chip" data-z="17"><b>17</b><s>fine</s></button>
+  </div>
+  <div class="gp-read" id="dlEst" style="font-size:14px">—</div>
+  <div id="dlProgWrap" style="display:none;margin:2px 0 10px">
+    <div style="height:9px;background:var(--panel2);border:1px solid var(--line);border-radius:5px;overflow:hidden">
+      <div id="dlBar" style="height:100%;width:0;background:var(--good);transition:width .15s"></div>
+    </div>
+    <div id="dlProgTxt" class="hint" style="margin:6px 0 0"></div>
+  </div>
+  <div class="row">
+    <button class="act amber" id="dlStart">Download area</button>
+    <button class="act" id="dlCancel" style="background:var(--panel2);color:var(--ink);display:none">Cancel</button>
+  </div>
+  <div class="hint" id="dlStored" style="margin:6px 0 8px"></div>
+  <div class="row"><button class="act" id="dlClear" style="background:var(--panel2);color:var(--ink)">Clear saved imagery</button></div>
 </div>
 
 <style>
@@ -1130,10 +1153,121 @@ $('#kmlList').addEventListener('click',e=>{
     idbDel(id); kmls=kmls.filter(k=>k.id!==id); setOrders(); saveKmls(); kmlExpanded=null; renderKmlList(); return; }
 });
 $('#bKml').onclick=()=>{ renderKmlList(); openSheet('sheetKml'); };
-$('#bKey').onclick=()=>{ $('#inKey').value=esriKey; openSheet('sheetKey'); };
+$('#bKey').onclick=()=>{ $('#inKey').value=esriKey; openSheet('sheetKey'); dlRefresh(); dlStoredRefresh(); };
 $('#saveKey').onclick=()=>{ applyEsriKey($('#inKey').value);
   layersCtl.addTo(map); closeSheets(); toast(esriKey?'Key saved — Esri satellite on':'Key cleared'); };
 $('#clearKey').onclick=()=>{ applyEsriKey(''); $('#inKey').value=''; toast('Key cleared'); };
+
+/* ---------- One-click offline imagery download for the current view ---------- */
+const DL_TILE_CAP=25000;            // refuse downloads larger than this (zoom in instead)
+const DL_AVG_KB=24;                 // rough avg satellite tile size for estimates
+const DL_RATE=10;                   // rough tiles/sec over wifi for the time estimate
+let dlCancel=false, dlBusy=false;
+
+function dlZoomSel(){ const c=document.querySelector('#dlZoom .gp-chip.on'); return c?parseInt(c.getAttribute('data-z'),10):15; }
+function activeBaseLayer(){ if(map.hasLayer(esri)) return esri; if(map.hasLayer(s2)) return s2; if(map.hasLayer(osm)) return osm; return esri; }
+function lon2tx(lon,z){ return Math.floor((lon+180)/360*Math.pow(2,z)); }
+function lat2ty(lat,z){ const r=lat*Math.PI/180; return Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z)); }
+function clampT(v,z){ const m=Math.pow(2,z)-1; return Math.max(0,Math.min(m,v)); }
+function dlRange(zMax){
+  const lyr=activeBaseLayer(), maxN=(lyr.options.maxNativeZoom||lyr.options.maxZoom||19);
+  const zHi=Math.min(zMax,maxN), zLo=Math.min(8,zHi);
+  const b=map.getBounds(), W=b.getWest(),E=b.getEast(),S=b.getSouth(),N=b.getNorth();
+  return {lyr,zLo,zHi,W,E,S,N,maxN,capped:zMax>maxN};
+}
+function dlCount(zMax){
+  const r=dlRange(zMax); let n=0;
+  for(let z=r.zLo; z<=r.zHi; z++){
+    const x0=clampT(lon2tx(r.W,z),z), x1=clampT(lon2tx(r.E,z),z);
+    const y0=clampT(lat2ty(r.N,z),z), y1=clampT(lat2ty(r.S,z),z);
+    n+=(x1-x0+1)*(y1-y0+1);
+  }
+  return {tiles:n,capped:r.capped,maxN:r.maxN};
+}
+function dlTileUrl(tmpl,subs,t){
+  let s='';
+  if(tmpl.indexOf('{s}')>=0){ const a=(typeof subs==='string')?subs.split(''):(subs||['a','b','c']); s=a[Math.abs(t.x+t.y)%a.length]; }
+  return tmpl.replace('{s}',s).replace('{z}',t.z).replace('{x}',t.x).replace('{y}',t.y);
+}
+async function dlTileCacheName(){
+  try{ const ks=await caches.keys(); for(const k of ks){ if(k.indexOf('surveylsd-tiles-')===0) return k; } }catch(e){}
+  return 'surveylsd-tiles-v1';
+}
+function fmtMB(kb){ const mb=kb/1024; return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' MB'; }
+
+function dlRefresh(){
+  const z=dlZoomSel(), c=dlCount(z);
+  const kb=c.tiles*DL_AVG_KB, mins=Math.max(1,Math.round(c.tiles/DL_RATE/60));
+  let txt='≈ '+c.tiles.toLocaleString()+' tiles · ~'+fmtMB(kb)+' · ~'+mins+' min';
+  if(c.capped) txt+=' (this layer maxes at z'+c.maxN+')';
+  const est=$('#dlEst'); est.textContent=txt;
+  const tooBig=c.tiles>DL_TILE_CAP;
+  est.style.color=tooBig?'var(--warn)':'var(--ink)';
+  const btn=$('#dlStart'); btn.disabled=tooBig||dlBusy;
+  btn.style.opacity=(tooBig||dlBusy)?'.5':'1';
+  if(tooBig) est.textContent=txt+'  — zoom in to a smaller area';
+}
+async function dlStoredRefresh(){
+  let txt='';
+  try{ if(navigator.storage&&navigator.storage.estimate){ const e=await navigator.storage.estimate();
+    txt='Saved on device: '+fmtMB((e.usage||0)/1024); if(e.quota) txt+=' of '+fmtMB((e.quota||0)/1024)+' available'; } }catch(e){}
+  $('#dlStored').textContent=txt;
+}
+
+async function dlRun(){
+  if(dlBusy) return;
+  const z=dlZoomSel(), c=dlCount(z);
+  if(c.tiles>DL_TILE_CAP){ toast('Area too large — zoom in'); return; }
+  dlBusy=true; dlCancel=false;
+  $('#dlStart').style.display='none'; $('#dlCancel').style.display='';
+  $('#dlProgWrap').style.display='block';
+  try{ if(navigator.storage&&navigator.storage.persist) await navigator.storage.persist(); }catch(e){}
+
+  const r=dlRange(z), tmpl=r.lyr._url, subs=r.lyr.options.subdomains;
+  const tiles=[];
+  for(let zz=r.zLo; zz<=r.zHi; zz++){
+    const x0=clampT(lon2tx(r.W,zz),zz), x1=clampT(lon2tx(r.E,zz),zz);
+    const y0=clampT(lat2ty(r.N,zz),zz), y1=clampT(lat2ty(r.S,zz),zz);
+    for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) tiles.push({x:x,y:y,z:zz});
+  }
+  const cacheName=await dlTileCacheName(), cache=await caches.open(cacheName);
+  const total=tiles.length; let done=0, saved=0, failed=0, idx=0;
+  const bar=$('#dlBar'), ptxt=$('#dlProgTxt');
+  function prog(){ const pct=total?Math.round(done/total*100):100;
+    bar.style.width=pct+'%'; ptxt.textContent=done.toLocaleString()+' / '+total.toLocaleString()+' ('+pct+'%) · '+saved.toLocaleString()+' saved'+(failed?(' · '+failed+' failed'):''); }
+  prog();
+  async function worker(){
+    while(idx<tiles.length){
+      if(dlCancel) return;
+      const t=tiles[idx++], url=dlTileUrl(tmpl,subs,t);
+      try{
+        const ex=await cache.match(url);
+        if(!ex){ const resp=await fetch(url,{mode:'no-cors'}); await cache.put(url,resp); }
+        saved++;
+      }catch(e){ failed++; }
+      done++; if((done&7)===0||done===total) prog();
+    }
+  }
+  const CONC=8, ws=[]; for(let i=0;i<CONC;i++) ws.push(worker());
+  await Promise.all(ws); prog();
+
+  dlBusy=false;
+  $('#dlCancel').style.display='none'; $('#dlStart').style.display='';
+  if(dlCancel) toast('Download stopped — '+saved.toLocaleString()+' tiles saved');
+  else toast('Area saved offline — '+saved.toLocaleString()+' tiles'+(failed?(', '+failed+' failed'):''));
+  setTimeout(()=>{ $('#dlProgWrap').style.display='none'; }, dlCancel?600:1500);
+  dlRefresh(); dlStoredRefresh();
+}
+
+$('#dlZoom').addEventListener('click',e=>{ const c=e.target.closest('.gp-chip'); if(!c) return;
+  document.querySelectorAll('#dlZoom .gp-chip').forEach(x=>x.classList.remove('on')); c.classList.add('on'); dlRefresh(); });
+$('#dlStart').onclick=dlRun;
+$('#dlCancel').onclick=()=>{ dlCancel=true; };
+$('#dlClear').onclick=async()=>{
+  try{ const n=await dlTileCacheName(); await caches.delete(n); }catch(e){}
+  toast('Saved imagery cleared'); dlStoredRefresh();
+};
+map.on('moveend zoomend',()=>{ if($('#sheetKey').classList.contains('open')&&!dlBusy) dlRefresh(); });
 $('#importBtn').onclick=()=>$('#fileIn').click();
 $('#fileIn').onchange=e=>{ const f=e.target.files[0]; if(f) addKmlFromFile(f); e.target.value=''; };
 $('#replaceIn').onchange=e=>{ const f=e.target.files[0]; if(f) replaceKmlFile(f); e.target.value=''; };
