@@ -35,6 +35,7 @@
   #elev b{color:var(--ink);font-weight:600}
   #elev .esep{opacity:.35}
   #elev .agl b{color:#3ddc84}
+  #elev .agl.hi b{color:#ff5d5d}
 
   #cross{position:absolute;top:50%;left:50%;z-index:450;
     width:46px;height:46px;margin:-23px 0 0 -23px;pointer-events:none}
@@ -509,30 +510,36 @@ const closeSheets=()=>document.querySelectorAll('.sheet').forEach(s=>s.classList
 const openSheet=id=>{ closeSheets(); $('#'+id).classList.add('open'); };
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closeSheets);
 
-/* ---------- Follow GPS ---------- */
-let watchId=null,gpsMarker=null,gpsCircle=null,following=false;
-$('#bGps').onclick=()=>{
-  if(following){ stopGps(); return; }
-  if(!navigator.geolocation){ toast('No geolocation on this device'); return; }
-  following=true; $('#bGps').classList.add('on');
-  watchId=navigator.geolocation.watchPosition(pos=>{
-    const {latitude,longitude,accuracy,altitude}=pos.coords, ll=[latitude,longitude];
-    gpsAltM=(altitude!=null&&isFinite(altitude))?altitude:null;
-    fetchElev(latitude,longitude).then(m=>{ gpsGroundM=m; renderElev(); }); renderElev();
-    if(!gpsMarker){
-      gpsMarker=L.circleMarker(ll,{radius:7,color:'#04101f',weight:2,fillColor:'#3ddc84',fillOpacity:1}).addTo(map);
-      gpsCircle=L.circle(ll,{radius:accuracy,color:'#3ddc84',weight:1,fillColor:'#3ddc84',fillOpacity:.08}).addTo(map);
-    } else { gpsMarker.setLatLng(ll); gpsCircle.setLatLng(ll).setRadius(accuracy); }
-    if(following) map.panTo(ll,{animate:true,duration:.4});
-  }, err=>{
-    toast('GPS error: '+err.message+(location.protocol!=='https:'?' (needs HTTPS)':''));
-    stopGps();
-  }, {enableHighAccuracy:true,maximumAge:1000,timeout:15000});
-};
-function stopGps(){ following=false; $('#bGps').classList.remove('on');
-  if(watchId!=null) navigator.geolocation.clearWatch(watchId); watchId=null;
-  gpsAltM=null; gpsGroundM=null; renderElev(); }
-map.on('dragstart',()=>{ if(following){ following=false; $('#bGps').classList.remove('on'); }});
+/* ---------- GPS: track continuously; button toggles follow / recenter ---------- */
+let watchId=null,gpsMarker=null,gpsCircle=null,following=false,tracking=false,lastFix=null,_gpsErrAt=0;
+function startTracking(){
+  if(!navigator.geolocation){ toast('No geolocation on this device'); return false; }
+  if(watchId!=null) return true;
+  watchId=navigator.geolocation.watchPosition(onFix,onGpsErr,{enableHighAccuracy:true,maximumAge:1000,timeout:20000});
+  tracking=true; return true;
+}
+function onFix(pos){
+  const {latitude,longitude,accuracy,altitude}=pos.coords, ll=[latitude,longitude];
+  lastFix=ll; tracking=true;
+  gpsAltM=(altitude!=null&&isFinite(altitude))?altitude:null;
+  fetchElev(latitude,longitude).then(m=>{ gpsGroundM=m; renderElev(); }); renderElev();
+  if(!gpsMarker){
+    gpsMarker=L.circleMarker(ll,{radius:7,color:'#04101f',weight:2,fillColor:'#3ddc84',fillOpacity:1}).addTo(map);
+    gpsCircle=L.circle(ll,{radius:accuracy,color:'#3ddc84',weight:1,fillColor:'#3ddc84',fillOpacity:.08}).addTo(map);
+  } else { gpsMarker.setLatLng(ll); gpsCircle.setLatLng(ll).setRadius(accuracy); }
+  if(following) map.panTo(ll,{animate:true,duration:.4});
+}
+function onGpsErr(err){
+  const now=Date.now();
+  if(err.code===1){ tracking=false; following=false; $('#bGps').classList.remove('on');
+    if(now-_gpsErrAt>10000){ _gpsErrAt=now; toast('Location permission denied — enable it for this site'); } return; }
+  if(!gpsMarker && now-_gpsErrAt>10000){ _gpsErrAt=now; toast('Waiting for GPS'+(location.protocol!=='https:'?' (needs HTTPS)':'')); }
+}
+function setFollow(on){ following=on; $('#bGps').classList.toggle('on',on);
+  if(on && startTracking() && lastFix) map.panTo(lastFix,{animate:true,duration:.4}); }
+$('#bGps').onclick=()=>{ if(!tracking){ if(startTracking()) setFollow(true); } else setFollow(!following); };
+map.on('dragstart',()=>{ if(following) setFollow(false); });   // manual pan stops recentring, GPS keeps tracking
+startTracking(); setFollow(true);                              // begin tracking on load, centred on first fix
 
 /* ---------- Ground elevation + altitude (ft) ---------- */
 const M2FT=3.28084;
@@ -567,7 +574,8 @@ function renderElev(){
   if(gpsAltM!=null){
     h+=' <span class="esep">·</span> Alt <b>'+fmtFt10(gpsAltM)+'</b>';
     const g=(gpsGroundM!=null)?gpsGroundM:(following?crossGroundM:null);
-    if(g!=null) h+=' <span class="esep">·</span> <span class="agl">AGL <b>'+fmtFt10(gpsAltM-g)+'</b></span>';
+    if(g!=null){ const aglM=gpsAltM-g, hi=(aglM*M2FT>1000)?' hi':'';
+      h+=' <span class="esep">·</span> <span class="agl'+hi+'">AGL <b>'+fmtFt10(aglM)+'</b></span>'; }
   }
   el.innerHTML=h;
 }
