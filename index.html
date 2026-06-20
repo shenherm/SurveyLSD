@@ -501,7 +501,7 @@ function scheduleReadout(){ if(_roPending) return; _roPending=true;
   requestAnimationFrame(function(){ _roPending=false; updateReadout(); }); }
 function updateReadout(){
   const c=map.getCenter();
-  const la=c.lat.toFixed(5), lo=c.lng.toFixed(5), z='z'+map.getZoom().toFixed(1);
+  const la=c.lat.toFixed(6), lo=c.lng.toFixed(6), z='z'+map.getZoom().toFixed(1);
   if(la!==_lastLa){ $('#lat').textContent=la; _lastLa=la; }
   if(lo!==_lastLo){ $('#lon').textContent=lo; _lastLo=lo; }
   if(z!==_lastZ){ $('#zlvl').textContent=z; _lastZ=z; }
@@ -763,7 +763,7 @@ function renderPins(){
 }
 renderPins();
 $('#bPin').onclick=()=>{ const c=map.getCenter();
-  $('#pinWhere').textContent='At centre: '+c.lat.toFixed(5)+', '+c.lng.toFixed(5)+'  ('+fmtLSD(latlonToLSD(c.lat,c.lng))+')';
+  $('#pinWhere').textContent='At centre: '+c.lat.toFixed(6)+', '+c.lng.toFixed(6)+'  ('+fmtLSD(latlonToLSD(c.lat,c.lng))+')';
   $('#inPinLabel').value=''; openSheet('sheetPin'); };
 $('#dropPin').onclick=()=>{ const c=map.getCenter();
   pins.push({lat:c.lat,lon:c.lng,label:$('#inPinLabel').value.trim()});
