@@ -977,7 +977,14 @@ function saveKmls(){ try{ localStorage.setItem('kmls', JSON.stringify(kmls.map(k
 async function installBuiltins(){
   let man; try{ const r=await fetch('lines/manifest.json',{cache:'no-store'}); if(!r.ok) return; man=await r.json(); }
   catch(e){ return; }   // offline or not deployed — keep whatever is already installed
+  if(!man || !Array.isArray(man.lines)) return;
+  const pub={}; for(const ln of man.lines) pub[ln.id]=ln;
   let changed=false;
+  // remove built-ins that have been withdrawn from the published manifest
+  for(let i=kmls.length-1;i>=0;i--){ const k=kmls[i];
+    if(k.builtin && !pub[k.id]){ disposeLayer(k.id);
+      const pane=map.getPane(paneName(k.id)); if(pane&&pane.parentNode) pane.parentNode.removeChild(pane);
+      idbDel(k.id); delete kmlInstalled[k.id]; kmls.splice(i,1); changed=true; } }
   for(const ln of man.lines){
     if(kmlDismissed.indexOf(ln.id)>=0) continue;
     const exists=kmls.find(k=>k.id===ln.id);
