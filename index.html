@@ -95,6 +95,8 @@
   .leaflet-control-attribution{font-size:9px !important;background:rgba(0,0,0,.5) !important;color:#aaa !important}
   .leaflet-bar a,.leaflet-control-layers{background:var(--panel) !important;color:var(--ink) !important;border-color:var(--line) !important}
   .leaflet-control-layers-expanded{padding:8px 10px;color:var(--ink)}
+  /* keep the zoom + imagery controls clear of the readout header bar */
+  .leaflet-top{top:calc(env(safe-area-inset-top,0px) + 104px) !important}
   .pin-label{background:#000a;color:#fff;border:1px solid var(--amber);border-radius:5px;padding:1px 5px;font-size:11px;font-weight:600;white-space:nowrap}
   .place-label{background:#0009;color:#fff;border:none;border-radius:4px;padding:0 4px;font-size:11px;white-space:nowrap}
 </style>
