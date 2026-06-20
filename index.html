@@ -5,9 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LSD Patrol">
+<meta name="theme-color" content="#0c0f12">
 <title>LSD Patrol Nav</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
-  onerror="this.onerror=null;this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="apple-touch-icon" sizes="167x167" href="apple-touch-icon-167.png">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css"
+  onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css'">
 <style>
   :root{
     --bg:#0c0f12; --panel:#161b21; --panel2:#1f262e; --line:#2c353e;
@@ -271,13 +276,14 @@
 <div id="toast"></div>
 <div id="boot"><svg class="bootmark" viewBox="0 0 58 58" aria-hidden="true"><circle class="rt" cx="29" cy="29" r="9.5"/><line class="rt" x1="29" y1="1.5" x2="29" y2="15.5"/><line class="rt" x1="29" y1="42.5" x2="29" y2="56.5"/><line class="rt" x1="1.5" y1="29" x2="15.5" y2="29"/><line class="rt" x1="42.5" y1="29" x2="56.5" y2="29"/><circle class="ctr" cx="29" cy="29" r="1.7"/></svg><div class="bar"></div><div>Loading map…</div></div>
 
-<!-- Leaflet: primary CDN, with JS fallback chain handled below -->
-<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Leaflet: local copy primary, CDN fallback chain handled below -->
+<script src="vendor/leaflet/leaflet.js"></script>
 <script>
 /* ---------- robust loader: make sure Leaflet (L) exists, then start ---------- */
 (function start(){
   if(window.L){ boot(); return; }
-  var fallbacks=['https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+  var fallbacks=['https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js',
+                 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
                  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js'];
   (function tryNext(i){
     if(window.L){ boot(); return; }
@@ -291,12 +297,25 @@
 })();
 function boot(){ var b=document.getElementById('boot'); if(b) b.remove(); initApp(); }
 
+/* ---------- service worker: offline app shell + tile/grid caching ---------- */
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('sw.js').catch(function(){});
+  });
+}
+
 function ensureJsZip(){
   return new Promise(function(res,rej){
     if(window.JSZip) return res();
-    var s=document.createElement('script');
-    s.src='https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
-    s.onload=res; s.onerror=rej; document.head.appendChild(s);
+    var srcs=['vendor/jszip.min.js','https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js'];
+    (function tryNext(i){
+      if(window.JSZip) return res();
+      if(i>=srcs.length) return rej(new Error('JSZip unavailable'));
+      var s=document.createElement('script'); s.src=srcs[i];
+      s.onload=function(){ window.JSZip?res():tryNext(i+1); };
+      s.onerror=function(){ tryNext(i+1); };
+      document.head.appendChild(s);
+    })(0);
   });
 }
 
