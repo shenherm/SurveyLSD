@@ -289,7 +289,8 @@ const showBanner=(m)=>{const b=$('#banner');b.innerHTML=m;b.classList.add('show'
 
 /* ---------- Map + base layers (with diagnosis) ---------- */
 const map = L.map('map',{zoomControl:true,attributionControl:true,
-  center:[53.5461,-113.4938], zoom:13, maxZoom:21, zoomSnap:0.25});
+  center:[53.5461,-113.4938], zoom:13, maxZoom:21, zoomSnap:0.25,
+  preferCanvas:true, fadeAnimation:false});
 
 // Esri World Imagery via the supported, token-authenticated basemap endpoint.
 // Free for non-revenue apps under <1M tiles/month with a free ArcGIS API key.
@@ -302,24 +303,23 @@ function esriUrl(){
   return 'https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
        + (esriKey?('?token='+encodeURIComponent(esriKey)):'');
 }
-const esri=L.tileLayer(esriUrl(),{maxZoom:21,maxNativeZoom:19,attribution:ESRI_ATTR});
+const esri=L.tileLayer(esriUrl(),{maxZoom:21,maxNativeZoom:19,attribution:ESRI_ATTR,updateWhenIdle:true,keepBuffer:1});
 
 // Offline base: EOX Sentinel-2 cloudless (~10m, free, legally bakeable). Online for now;
 // the pre-built MBTiles pack (build_offline_base.py) will make this work with no signal.
 const S2_YEAR='2024';
 const s2attr='Sentinel-2 cloudless '+S2_YEAR+' &copy; EOX IT Services GmbH (modified Copernicus Sentinel data)';
 const s2=L.tileLayer('https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-'+S2_YEAR+'_3857/default/g/{z}/{y}/{x}.jpg',
-  {maxZoom:21,maxNativeZoom:14,attribution:s2attr});
+  {maxZoom:21,maxNativeZoom:14,attribution:s2attr,updateWhenIdle:true,keepBuffer:1});
 
 const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'});
 
-// Sentinel base sits underneath; Esri high-res draws on top when online.
-// Offline (once the pack is wired), Esri tiles simply don't draw and the base shows through.
-s2.addTo(map);
+// One base layer at a time for speed (old iPads). Esri online by default;
+// switch to Sentinel-2 (the offline base) or OSM from the layers menu.
 esri.addTo(map);
 const layersCtl=L.control.layers(
-  { 'Sentinel-2 (offline base)':s2, 'Streets (OSM)':osm },     // base layers (pick one)
-  { 'Esri hi-res (online)':esri },                              // overlay (draws on top)
+  { 'Esri hi-res':esri, 'Sentinel-2 (offline base)':s2, 'Streets (OSM)':osm },
+  {},
   {position:'topright',collapsed:true}
 ).addTo(map);
 
@@ -333,7 +333,7 @@ function applyEsriKey(k){
 let esriErr=0;
 esri.on('tileerror',()=>{ esriErr++;
   if(esriErr===6) showBanner('Esri hi-res isn’t loading. Check your <b>Map key</b> (below), or your network may block the imagery host — '+
-    'test on a phone hotspot. The <b>Sentinel-2</b> base underneath still gives you orientation.');
+    'test on a phone hotspot. You can switch to the <b>Sentinel-2</b> base in the layers menu (top-right) for orientation.');
 });
 esri.on('load',()=>{ esriErr=0; $('#banner').classList.remove('show'); });
 
@@ -484,26 +484,29 @@ Promise.all([
   toast('Exact LSD grid loaded — '+GRID.count.toLocaleString()+' sections');
 }).catch(()=>{});
 
-/* ---------- Readout ---------- */
+/* ---------- Readout (coalesced to one update per frame, DOM written only on change) ---------- */
+let _roPending=false,_lastLa='',_lastLo='',_lastZ='',_lastLsd='';
+function scheduleReadout(){ if(_roPending) return; _roPending=true;
+  requestAnimationFrame(function(){ _roPending=false; updateReadout(); }); }
 function updateReadout(){
   const c=map.getCenter();
-  $('#lat').textContent=c.lat.toFixed(5);
-  $('#lon').textContent=c.lng.toFixed(5);
-  $('#zlvl').textContent='z'+map.getZoom().toFixed(1);
+  const la=c.lat.toFixed(5), lo=c.lng.toFixed(5), z='z'+map.getZoom().toFixed(1);
+  if(la!==_lastLa){ $('#lat').textContent=la; _lastLa=la; }
+  if(lo!==_lastLo){ $('#lon').textContent=lo; _lastLo=lo; }
+  if(z!==_lastZ){ $('#zlvl').textContent=z; _lastZ=z; }
+  let html;
   if(GRID){
     const o=latlonToLSDexact(c.lat,c.lng);
-    if(o){ $('#lsd').innerHTML = fmtLSD(o); }
-    else {
-      const a=latlonToLSDapprox(c.lat,c.lng);
-      $('#lsd').innerHTML = a ? fmtLSD(a)+' <span class="approx">≈ approx</span>'
-        : '<span style="color:var(--muted);font-size:.62em">— outside survey —</span>';
-    }
+    if(o) html=fmtLSD(o);
+    else { const a=latlonToLSDapprox(c.lat,c.lng);
+      html = a ? fmtLSD(a)+' <span class="approx">≈ approx</span>'
+               : '<span style="color:var(--muted);font-size:.62em">— outside survey —</span>'; }
   } else {
-    const o=latlonToLSDapprox(c.lat,c.lng);
-    $('#lsd').innerHTML = fmtLSD(o)+' <span class="approx">≈ approx</span>';
+    html=fmtLSD(latlonToLSDapprox(c.lat,c.lng))+' <span class="approx">≈ approx</span>';
   }
+  if(html!==_lastLsd){ $('#lsd').innerHTML=html; _lastLsd=html; }
 }
-map.on('move zoom',updateReadout); updateReadout();
+map.on('move zoom',scheduleReadout); updateReadout();
 
 /* ---------- Sheets ---------- */
 const closeSheets=()=>document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));
