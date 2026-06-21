@@ -44,21 +44,29 @@ This is the supported "local app" path — no Mac, Xcode or Apple Developer acco
 
 ## Offline use
 
-A service worker (`sw.js`) caches everything needed to run without a connection:
+Everything needed to fly without a connection is stored **on the device**, in storage the
+app reads directly (IndexedDB / localStorage) — *not* only in the service-worker cache. This
+is deliberate: it means offline works the same in the browser PWA and in a future native
+(Capacitor) iPad app, where the service worker does not run.
 
-- **App shell + survey grids** are precached on first load, so LSD lookup, coordinates,
-  measure, pin and your imported lines all work offline immediately.
-- **Map imagery** is cached as viewed, *and* can be **downloaded in one tap**: open
-  **Map key**, frame the patrol area, choose a detail level (z14–z17), and tap
-  **Download area**. It shows a live tile/size/time estimate, has a progress bar and
-  cancel, and refuses areas over ~25,000 tiles (zoom in instead). Tiles are written to the
-  same cache the worker serves from.
-- **Elevation** readings are cached network-first, so seen areas keep showing ground/AGL
-  offline.
+- **Pipelines (KML/KMZ)** — imported geometry is stored in **IndexedDB** and reloaded on
+  launch, so your lines persist across sessions with no re-import.
+- **Pins** — saved to **localStorage** on drop and restored on launch.
+- **Map imagery** — **downloaded in one tap** and stored as image blobs in **IndexedDB**:
+  open **Map key**, frame the patrol area, choose a detail level (z14–z17), and tap
+  **Download area**. Live tile/size/time estimate, progress bar and cancel; refuses areas
+  over ~25,000 tiles (zoom in instead). A custom map layer reads those stored tiles straight
+  back when offline, falling through to the network when online. The **Map key** sheet shows
+  how many tiles are saved and a **Clear saved imagery** button.
+- **App shell** — `index.html`, the vendored libraries and icons are precached by the
+  service worker so the PWA also *loads* offline. (In a native build the shell is bundled in
+  the app instead.)
+- **Elevation** — cached network-first by the service worker in the PWA; online-only in a
+  native build unless we add a DEM.
 
-**Note:** the very first load (and any imagery download) must be online — a service worker
-can only cache what it has fetched at least once. Install and pre-download on wifi before a
-no-signal flight.
+**Note:** the first load, the imagery download, and a first KML import must be online — the
+device can only store what it has fetched at least once. Install, import lines, and
+pre-download the area on wifi before a no-signal flight.
 
 ---
 
@@ -66,7 +74,7 @@ no-signal flight.
 
 ```
 index.html                  the entire app (HTML + CSS + JS in one file)
-sw.js                       service worker: offline shell + tile/grid/elevation caching
+sw.js                       service worker (PWA only): app-shell offline + elevation cache
 manifest.webmanifest        PWA manifest (standalone display, icons)
 
 ats_grid.bin                Alberta ATS section grid   (binary, ~9 MB)
@@ -157,10 +165,14 @@ GitHub Pages serves `main`, so **commit to `main` and it's live** (give Pages a 
 
 ### Service-worker versioning (in `sw.js`)
 
+The service worker now only handles the **PWA app shell** and elevation — imagery lives in
+IndexedDB (above), not the worker.
+
 - **`SHELL_VER`** — bump this when the app shell, vendored libraries or icons change. The old
-  shell cache is cleared on activate.
-- **`TILE_VER`** — kept **stable on purpose** so imagery a crew has already downloaded for
-  offline use is **not** wiped by an app update. Only bump it if the tile sources change.
+  shell cache is cleared on activate. (Currently `v3`.)
+
+Downloaded imagery is unaffected by shell updates because it's in IndexedDB
+(`patrolTiles`), cleared only via the in-app **Clear saved imagery** button.
 
 ---
 
@@ -175,6 +187,39 @@ The fleet includes **older iPads**, so the code targets older Safari:
 - All inline scripts are syntax-checked (`node --check`) before each deploy.
 
 ---
+
+## Future: native iOS app (Capacitor)
+
+The plan is to ship this as a real native iPad app. The chosen route is **Capacitor**, which
+wraps the existing web app in an Xcode/Swift project that builds to an `.ipa` for
+TestFlight / the App Store. The web code is already built to survive that move:
+
+**Already native-ready** — these use storage the web layer reads directly, which works the
+same in Safari and in Capacitor's WKWebView (where the service worker does **not** run):
+
+- **Imagery** is downloaded to **IndexedDB** (`patrolTiles`) and served by a custom Leaflet
+  layer — no service worker involved. Downloads use CORS fetches so the bytes are readable.
+- **Pipelines** import to **IndexedDB** (`patrolKml`); the file picker works from the iOS
+  Files app, and geometry persists across launches.
+- **Pins** persist in **localStorage**.
+
+**Prerequisites when ready:**
+
+- A **Mac with Xcode** (the iOS build must happen on macOS).
+- An **Apple Developer account** ($99/yr) for on-device install beyond brief dev runs and for
+  TestFlight / App Store distribution.
+
+**Native-only work remaining (small):**
+
+- Wrap with Capacitor, set the app icon/splash, and build in Xcode.
+- *Optional:* let crews drop `.kml` files into the app's folder via the Capacitor Filesystem
+  plugin (in addition to the current file picker).
+- *Optional:* bundle elevation (a small DEM) for offline ground/AGL, since the elevation API
+  is online-only without the service worker.
+
+The tradeoff is distribution and polish (App Store/TestFlight, better background GPS, bundled
+maps) in exchange for a Mac, the yearly fee and Xcode upkeep. The PWA already delivers the
+core in-flight experience without any of that.
 
 ## Credits
 

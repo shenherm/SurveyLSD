@@ -279,8 +279,8 @@
   <h2>Pipeline lines (KML)</h2>
   <div class="row">
     <button class="act" id="importBtn">Import KML / KMZ</button>
-    <input type="file" id="fileIn" accept=".kml,.kmz,application/vnd.google-earth.kml+xml" style="display:none">
-    <input type="file" id="replaceIn" accept=".kml,.kmz,application/vnd.google-earth.kml+xml" style="display:none">
+    <input type="file" id="fileIn" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,application/zip,application/xml,text/xml" style="display:none">
+    <input type="file" id="replaceIn" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,application/zip,application/xml,text/xml" style="display:none">
   </div>
   <div class="hint">Tap the toggle to show/hide a file. Tap its name to open <b>colour</b>, <b>thickness</b> and draw-order controls — and use ▲ ▼ to lift one line above another where pipelines overlap. Built-in lines load automatically; imported files and all edits are stored on this device. Imported lines are thinned to a 10&nbsp;cm tolerance (well below GPS accuracy) for fast drawing, keeping every bend.</div>
   <div id="kmlList"><div class="empty">No KML imported yet.</div></div>
@@ -383,16 +383,55 @@ function esriUrl(){
   return 'https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
        + (esriKey?('?token='+encodeURIComponent(esriKey)):'');
 }
-const esri=L.tileLayer(esriUrl(),{maxZoom:21,maxNativeZoom:19,attribution:ESRI_ATTR,updateWhenIdle:true,keepBuffer:1});
+/* ---- On-device offline tile store (IndexedDB blobs) + custom tile layer ----
+   Works WITHOUT a service worker, so downloaded imagery survives the move to a
+   native (Capacitor) iPad app. The one-click download writes tiles here; this
+   layer reads them straight back, falling through to the network when online. */
+let _tileDB=null;
+function tileDB(){ if(_tileDB) return Promise.resolve(_tileDB);
+  return new Promise((res,rej)=>{ const r=indexedDB.open('patrolTiles',1);
+    r.onupgradeneeded=()=>{ const d=r.result; if(!d.objectStoreNames.contains('tiles')) d.createObjectStore('tiles'); };
+    r.onsuccess=()=>{ _tileDB=r.result; res(_tileDB); }; r.onerror=()=>rej(r.error); }); }
+function tileGet(key){ return tileDB().then(db=>new Promise((res,rej)=>{ const tx=db.transaction('tiles','readonly');
+  const rq=tx.objectStore('tiles').get(key); rq.onsuccess=()=>res(rq.result||null); rq.onerror=()=>rej(rq.error); })); }
+function tilePut(key,blob){ return tileDB().then(db=>new Promise((res,rej)=>{ const tx=db.transaction('tiles','readwrite');
+  tx.objectStore('tiles').put(blob,key); tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error); })); }
+function tileHas(key){ return tileGet(key).then(b=>!!b).catch(()=>false); }
+function tileCount(){ return tileDB().then(db=>new Promise(res=>{ const tx=db.transaction('tiles','readonly');
+  const rq=tx.objectStore('tiles').count(); rq.onsuccess=()=>res(rq.result||0); rq.onerror=()=>res(0); })).catch(()=>0); }
+function tileClear(){ return tileDB().then(db=>new Promise(res=>{ const tx=db.transaction('tiles','readwrite');
+  tx.objectStore('tiles').clear(); tx.oncomplete=()=>res(true); tx.onerror=()=>res(false); })).catch(()=>false); }
+const OfflineTileLayer=L.TileLayer.extend({
+  createTile:function(coords,done){
+    const tile=document.createElement('img');
+    L.DomEvent.on(tile,'load', L.bind(this._tileOnLoad, this,done,tile));
+    L.DomEvent.on(tile,'error',L.bind(this._tileOnError,this,done,tile));
+    tile.alt=''; tile.setAttribute('role','presentation');
+    const net=this.getTileUrl(coords); tile._net=net;
+    const key=this.options.layerId+'/'+coords.z+'/'+coords.x+'/'+coords.y;
+    tileGet(key).then(b=>{ if(b){ const u=URL.createObjectURL(b); tile._obj=u; tile.src=u; } else tile.src=net; })
+               .catch(()=>{ tile.src=net; });
+    return tile;
+  },
+  _tileOnLoad:function(done,tile){ if(tile._obj){ URL.revokeObjectURL(tile._obj); tile._obj=null; }
+    L.TileLayer.prototype._tileOnLoad.call(this,done,tile); },
+  _tileOnError:function(done,tile,e){ if(tile._obj){ URL.revokeObjectURL(tile._obj); tile._obj=null; tile.src=tile._net; return; }
+    L.TileLayer.prototype._tileOnError.call(this,done,tile,e); }
+});
+function offlineLayer(url,opts){ const l=new OfflineTileLayer(url,opts);
+  l.on('tileunload',e=>{ const t=e&&e.tile; if(t&&t._obj){ URL.revokeObjectURL(t._obj); t._obj=null; } });
+  return l; }
+
+const esri=offlineLayer(esriUrl(),{maxZoom:21,maxNativeZoom:19,attribution:ESRI_ATTR,updateWhenIdle:true,keepBuffer:1,layerId:'esri'});
 
 // Offline base: EOX Sentinel-2 cloudless (~10m, free, legally bakeable). Online for now;
 // the pre-built MBTiles pack (build_offline_base.py) will make this work with no signal.
 const S2_YEAR='2024';
 const s2attr='Sentinel-2 cloudless '+S2_YEAR+' &copy; EOX IT Services GmbH (modified Copernicus Sentinel data)';
-const s2=L.tileLayer('https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-'+S2_YEAR+'_3857/default/g/{z}/{y}/{x}.jpg',
-  {maxZoom:21,maxNativeZoom:14,attribution:s2attr,updateWhenIdle:true,keepBuffer:1});
+const s2=offlineLayer('https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-'+S2_YEAR+'_3857/default/g/{z}/{y}/{x}.jpg',
+  {maxZoom:21,maxNativeZoom:14,attribution:s2attr,updateWhenIdle:true,keepBuffer:1,layerId:'s2'});
 
-const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'});
+const osm=offlineLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap',layerId:'osm'});
 
 // One base layer at a time for speed (old iPads). Esri online by default;
 // switch to Sentinel-2 (the offline base) or OSM from the layers menu.
@@ -830,9 +869,10 @@ map.on('click',e=>{
   all();
 })();
 
-/* ---------- Pins ---------- */
+/* ---------- Pins (persisted on-device in localStorage; survives PWA + native) ---------- */
 let pinLayer=L.layerGroup().addTo(map);
-let pins=JSON.parse(localStorage.getItem('pins')||'[]');
+let pins=(function(){ try{ return JSON.parse(localStorage.getItem('pins')||'[]')||[]; }catch(e){ return []; } })();
+function savePins(){ try{ localStorage.setItem('pins',JSON.stringify(pins)); }catch(e){ toast('Could not save pin — device storage full'); } }
 function renderPins(){
   pinLayer.clearLayers();
   pins.forEach(p=>{
@@ -847,9 +887,9 @@ $('#bPin').onclick=()=>{ const c=map.getCenter();
   $('#inPinLabel').value=''; openSheet('sheetPin'); };
 $('#dropPin').onclick=()=>{ const c=map.getCenter();
   pins.push({lat:c.lat,lon:c.lng,label:$('#inPinLabel').value.trim()});
-  localStorage.setItem('pins',JSON.stringify(pins)); renderPins(); closeSheets(); toast('Pin dropped'); };
+  savePins(); renderPins(); closeSheets(); toast('Pin dropped'); };
 $('#clearPins').onclick=()=>{ if(!pins.length){toast('No pins');return;}
-  pins=[]; localStorage.setItem('pins','[]'); renderPins(); closeSheets(); toast('Pins cleared'); };
+  pins=[]; savePins(); renderPins(); closeSheets(); toast('Pins cleared'); };
 
 /* ---------- KML ---------- */
 /* ============================================================
@@ -1205,10 +1245,6 @@ function dlTileUrl(tmpl,subs,t){
   if(tmpl.indexOf('{s}')>=0){ const a=(typeof subs==='string')?subs.split(''):(subs||['a','b','c']); s=a[Math.abs(t.x+t.y)%a.length]; }
   return tmpl.replace('{s}',s).replace('{z}',t.z).replace('{x}',t.x).replace('{y}',t.y);
 }
-async function dlTileCacheName(){
-  try{ const ks=await caches.keys(); for(const k of ks){ if(k.indexOf('surveylsd-tiles-')===0) return k; } }catch(e){}
-  return 'surveylsd-tiles-v1';
-}
 function fmtMB(kb){ const mb=kb/1024; return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' MB'; }
 
 function dlRefresh(){
@@ -1225,8 +1261,10 @@ function dlRefresh(){
 }
 async function dlStoredRefresh(){
   let txt='';
+  try{ const n=await tileCount(); if(n) txt=n.toLocaleString()+' tiles saved'; }catch(e){}
   try{ if(navigator.storage&&navigator.storage.estimate){ const e=await navigator.storage.estimate();
-    txt='Saved on device: '+fmtMB((e.usage||0)/1024); if(e.quota) txt+=' of '+fmtMB((e.quota||0)/1024)+' available'; } }catch(e){}
+    const used='Saved on device: '+fmtMB((e.usage||0)/1024)+(e.quota?(' of '+fmtMB((e.quota||0)/1024)+' available'):'');
+    txt=txt?(txt+' · '+used):used; } }catch(e){}
   $('#dlStored').textContent=txt;
 }
 
@@ -1239,14 +1277,13 @@ async function dlRun(){
   $('#dlProgWrap').style.display='block';
   try{ if(navigator.storage&&navigator.storage.persist) await navigator.storage.persist(); }catch(e){}
 
-  const r=dlRange(z), tmpl=r.lyr._url, subs=r.lyr.options.subdomains;
+  const r=dlRange(z), tmpl=r.lyr._url, subs=r.lyr.options.subdomains, layerId=r.lyr.options.layerId;
   const tiles=[];
   for(let zz=r.zLo; zz<=r.zHi; zz++){
     const x0=clampT(lon2tx(r.W,zz),zz), x1=clampT(lon2tx(r.E,zz),zz);
     const y0=clampT(lat2ty(r.N,zz),zz), y1=clampT(lat2ty(r.S,zz),zz);
     for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) tiles.push({x:x,y:y,z:zz});
   }
-  const cacheName=await dlTileCacheName(), cache=await caches.open(cacheName);
   const total=tiles.length; let done=0, saved=0, failed=0, idx=0;
   const bar=$('#dlBar'), ptxt=$('#dlProgTxt');
   function prog(){ const pct=total?Math.round(done/total*100):100;
@@ -1255,11 +1292,10 @@ async function dlRun(){
   async function worker(){
     while(idx<tiles.length){
       if(dlCancel) return;
-      const t=tiles[idx++], url=dlTileUrl(tmpl,subs,t);
+      const t=tiles[idx++], url=dlTileUrl(tmpl,subs,t), key=layerId+'/'+t.z+'/'+t.x+'/'+t.y;
       try{
-        const ex=await cache.match(url);
-        if(!ex){ const resp=await fetch(url,{mode:'no-cors'}); await cache.put(url,resp); }
-        saved++;
+        if(await tileHas(key)){ saved++; }
+        else{ const resp=await fetch(url); if(resp.ok){ await tilePut(key,await resp.blob()); saved++; } else failed++; }
       }catch(e){ failed++; }
       done++; if((done&7)===0||done===total) prog();
     }
@@ -1280,7 +1316,8 @@ $('#dlZoom').addEventListener('click',e=>{ const c=e.target.closest('.gp-chip');
 $('#dlStart').onclick=dlRun;
 $('#dlCancel').onclick=()=>{ dlCancel=true; };
 $('#dlClear').onclick=async()=>{
-  try{ const n=await dlTileCacheName(); await caches.delete(n); }catch(e){}
+  await tileClear();
+  try{ const ks=await caches.keys(); for(const k of ks){ if(k.indexOf('surveylsd-tiles-')===0) await caches.delete(k); } }catch(e){}
   toast('Saved imagery cleared'); dlStoredRefresh();
 };
 map.on('moveend zoomend',()=>{ if($('#sheetKey').classList.contains('open')&&!dlBusy) dlRefresh(); });
