@@ -1,10 +1,13 @@
 /* SurveyLSD / LSD Patrol Nav - offline service worker
-   Bump VERSION whenever the app shell or vendored libraries change;
-   the activate step deletes any cache that doesn't match the current names. */
-var VERSION = 'v1';
-var SHELL = 'surveylsd-shell-' + VERSION;   // app shell + survey grids (cache-first)
-var TILES = 'surveylsd-tiles-' + VERSION;   // map imagery viewed online (cache-first, capped)
-var DATA  = 'surveylsd-data-'  + VERSION;   // elevation lookups (network-first, cache fallback)
+   Bump SHELL_VER when the app shell, libraries or icons change (old shell cache is
+   cleared on activate). TILE_VER is kept stable on purpose so imagery a crew has
+   already downloaded for offline use is NOT wiped by an app update. */
+var SHELL_VER = 'v2';   // bump on app-shell / library / icon changes
+var TILE_VER  = 'v1';   // keep STABLE so downloaded offline imagery survives app updates
+var DATA_VER  = 'v1';
+var SHELL = 'surveylsd-shell-' + SHELL_VER;   // app shell + survey grids (cache-first)
+var TILES = 'surveylsd-tiles-' + TILE_VER;    // map imagery (cache-first, capped)
+var DATA  = 'surveylsd-data-'  + DATA_VER;    // elevation lookups (network-first, cache fallback)
 
 var TILE_MAX = 2000;  // ~ a few hundred MB of tiles; oldest are evicted past this
 
@@ -13,6 +16,7 @@ var SHELL_CORE = [
   './',
   './index.html',
   './manifest.webmanifest',
+  './envirotech-logo.png',
   './vendor/leaflet/leaflet.css',
   './vendor/leaflet/leaflet.js',
   './vendor/leaflet/images/layers.png',
