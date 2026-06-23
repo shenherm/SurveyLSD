@@ -27,7 +27,7 @@ var SHELL_CORE = [
   './apple-touch-icon.png',
   './apple-touch-icon-167.png'
 ];
-var SHELL_BIG = ['./ats_grid.bin', './sk_grid.bin'];
+var SHELL_BIG = ['./ats_grid.bin', './sk_grid.bin', './dem.bin'];
 
 function isElevHost(u){
   var h = u.hostname;

@@ -52,17 +52,25 @@ is deliberate: it means offline works the same in the browser PWA and in a futur
 - **Pipelines (KML/KMZ)** — imported geometry is stored in **IndexedDB** and reloaded on
   launch, so your lines persist across sessions with no re-import.
 - **Pins** — saved to **localStorage** on drop and restored on launch.
-- **Map imagery** — **downloaded in one tap** and stored as image blobs in **IndexedDB**:
-  open **Map key**, frame the patrol area, choose a detail level (z14–z17), and tap
-  **Download area**. Live tile/size/time estimate, progress bar and cancel; refuses areas
-  over ~25,000 tiles (zoom in instead). A custom map layer reads those stored tiles straight
-  back when offline, falling through to the network when online. The **Map key** sheet shows
-  how many tiles are saved and a **Clear saved imagery** button.
+- **Map imagery** — **downloaded in one tap** and stored as image blobs in **IndexedDB**.
+  Open **Map key** and choose what to download:
+  - **Along pipelines (corridor)** — *default.* Saves only tiles within a chosen radius
+    (2 / 5 / 10 km each side) of the loaded, visible KML lines. A thin flight line no longer
+    drags in a whole rectangle of imagery you'll never fly over — typically several times less
+    data than the box for the same coverage. Toggle off any lines you're not flying first.
+  - **Current view (box)** — the old behaviour: every tile in the current rectangle.
+
+  Pick a detail level (z14–z17) and tap **Download**. Live tile/size/time estimate, progress
+  bar and cancel; refuses jobs over ~25,000 tiles (reduce radius/detail, or zoom in). A custom
+  map layer reads stored tiles straight back when offline, falling through to the network when
+  online. The sheet shows how many tiles are saved and a **Clear saved imagery** button.
 - **App shell** — `index.html`, the vendored libraries and icons are precached by the
   service worker so the PWA also *loads* offline. (In a native build the shell is bundled in
   the app instead.)
-- **Elevation** — cached network-first by the service worker in the PWA; online-only in a
-  native build unless we add a DEM.
+- **Elevation** — works offline anywhere covered by the optional bundled **DEM** (`dem.bin`,
+  see *Elevation (DEM)* below): ground/AGL are read instantly from on-device terrain data with
+  no network, in both the PWA and a native build. Outside DEM coverage it falls back to the
+  online elevation API (network-first, service-worker-cached in the PWA).
 
 **Note:** the first load, the imagery download, and a first KML import must be online — the
 device can only store what it has fetched at least once. Install, import lines, and
@@ -79,6 +87,7 @@ manifest.webmanifest        PWA manifest (standalone display, icons)
 
 ats_grid.bin                Alberta ATS section grid   (binary, ~9 MB)
 sk_grid.bin                 Saskatchewan section grid  (binary, ~2.9 MB)
+dem.bin                     offline ground-elevation grid (optional; built in Colab)
 
 vendor/leaflet/             Leaflet 1.9.4, vendored locally (js, css, marker images)
 vendor/jszip.min.js         JSZip, vendored locally (for reading .kmz)
@@ -151,6 +160,40 @@ W1/W2/W3).
 
 The builder scripts/notebooks live with the project's working files; run them in Colab and
 upload the resulting `ats_grid.bin` / `sk_grid.bin` to the repo root.
+
+---
+
+## Elevation (DEM)
+
+Ground/AGL elevation can run **fully offline** from an optional bundled terrain grid,
+`dem.bin`. When present it's the *first* source the app tries (instant, no network); the
+online elevation API is only used outside DEM coverage. Without `dem.bin` the app still works
+— elevation just stays online-only — so it's safe to ship before the DEM is built.
+
+`dem.bin` uses a compact multi-region binary (`DEM1`), little-endian:
+
+```
+'DEM1'                     4-byte magic
+uint16  nRegions
+per region:
+  int32 lat0_e6            south edge   (microdegrees)
+  int32 lon0_e6            west edge    (microdegrees)
+  int32 dLat_e6            row spacing  (microdegrees)
+  int32 dLon_e6            col spacing  (microdegrees)
+  uint16 nRows, nCols      grid size (rows south→north, cols west→east)
+  int16[nRows*nCols]       elevation, metres, row-major; -32768 = nodata
+```
+
+The app loads it, and `demElev(lat,lon)` does a bilinear lookup within whichever region
+covers the point (returns `null` outside coverage or on nodata → online fallback).
+
+**Building `dem.bin`** is done in **Google Colab**, like the grids, with `build_dem.py`. It
+samples the **same Open-Meteo elevation source** the app uses online (keyless), so offline
+readings match online ones. Point it at your pipeline `.kml` file(s) — it builds padded
+regions around each file's bounding box — or list bounding boxes by hand, pick a grid spacing
+(default ~280 m), run all, and upload the resulting `dem.bin` to the repo root. Keep coverage
+to the areas you actually patrol; the service worker precaches `dem.bin` best-effort (its
+absence never breaks install).
 
 ---
 

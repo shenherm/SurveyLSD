@@ -183,7 +183,16 @@
 
   <div style="border-top:1px solid var(--line);margin:16px 0 12px"></div>
   <h2 style="font-size:14px">Download imagery for this area</h2>
-  <div class="hint">Frame your patrol area on the map, pick a detail level, then tap once. Every tile in view is saved for offline use — no panning needed. Downloads the imagery layer that's currently showing.</div>
+  <div class="hint">Pick what to download, then tap once. Tiles are saved on the device for offline use. Downloads the imagery layer that's currently showing.</div>
+  <div class="gp-chips" id="dlMode" style="grid-template-columns:1fr 1fr">
+    <button class="gp-chip on" data-mode="corridor"><b>Along pipelines</b><s>buffer the KML lines</s></button>
+    <button class="gp-chip" data-mode="box"><b>Current view</b><s>the whole rectangle</s></button>
+  </div>
+  <div class="gp-chips" id="dlRadius" style="grid-template-columns:repeat(3,1fr)">
+    <button class="gp-chip" data-r="2"><b>2 km</b><s>each side</s></button>
+    <button class="gp-chip on" data-r="5"><b>5 km</b><s>each side</s></button>
+    <button class="gp-chip" data-r="10"><b>10 km</b><s>each side</s></button>
+  </div>
   <div class="gp-chips" id="dlZoom" style="grid-template-columns:repeat(4,1fr)">
     <button class="gp-chip" data-z="14"><b>14</b><s>light</s></button>
     <button class="gp-chip on" data-z="15"><b>15</b><s>standard</s></button>
@@ -692,7 +701,56 @@ function esriElev(la,lo){            // fallback: elevation-enabled Esri key
     .then(r=>r.ok?r.json():null).then(j=>{ const v=j&&j.value!=null?parseFloat(j.value):NaN; return isFinite(v)?v:null; })
     .catch(()=>null);
 }
+/* ---------- Bundled offline DEM (ground elevation) ----------
+   Optional dem.bin (built in Colab via build_dem.py) gives instant ground
+   elevation with no network, so ground/AGL work offline in the PWA and the
+   native app. Falls back to the online elevation APIs outside DEM coverage. */
+let DEM=null;
+function loadDEM(buf){
+  const dv=new DataView(buf);
+  if(dv.getUint8(0)!==68||dv.getUint8(1)!==69||dv.getUint8(2)!==77||dv.getUint8(3)!==49) return null; // 'DEM1'
+  let o=4; const nR=dv.getUint16(o,true); o+=2; const regions=[];
+  for(let i=0;i<nR;i++){
+    const lat0=dv.getInt32(o,true)/1e6; o+=4;
+    const lon0=dv.getInt32(o,true)/1e6; o+=4;
+    const dLat=dv.getInt32(o,true)/1e6; o+=4;
+    const dLon=dv.getInt32(o,true)/1e6; o+=4;
+    const nRows=dv.getUint16(o,true); o+=2;
+    const nCols=dv.getUint16(o,true); o+=2;
+    const n=nRows*nCols, data=new Int16Array(n);
+    for(let k=0;k<n;k++){ data[k]=dv.getInt16(o,true); o+=2; }
+    regions.push({lat0,lon0,dLat,dLon,nRows,nCols,data});
+  }
+  return {regions};
+}
+const DEM_ND=-32768;
+function demElev(la,lo){
+  if(!DEM) return null;
+  for(const R of DEM.regions){
+    const maxLat=R.lat0+(R.nRows-1)*R.dLat, maxLon=R.lon0+(R.nCols-1)*R.dLon;
+    if(la<R.lat0||la>maxLat||lo<R.lon0||lo>maxLon) continue;
+    const fr=(la-R.lat0)/R.dLat, fc=(lo-R.lon0)/R.dLon;
+    let r0=Math.floor(fr), c0=Math.floor(fc); if(r0<0)r0=0; if(c0<0)c0=0;
+    const r1=Math.min(r0+1,R.nRows-1), c1=Math.min(c0+1,R.nCols-1), tr=fr-r0, tc=fc-c0;
+    const g=(r,c)=>R.data[r*R.nCols+c];
+    const v00=g(r0,c0),v01=g(r0,c1),v10=g(r1,c0),v11=g(r1,c1);
+    if(v00===DEM_ND||v01===DEM_ND||v10===DEM_ND||v11===DEM_ND){
+      const cand=[v00,v01,v10,v11].filter(v=>v!==DEM_ND); return cand.length?cand[0]:null; }
+    const top=v00*(1-tc)+v01*tc, bot=v10*(1-tc)+v11*tc;
+    return top*(1-tr)+bot*tr;
+  }
+  return null;
+}
+fetch('dem.bin').then(r=>r.ok?r.arrayBuffer():null).catch(()=>null).then(buf=>{
+  if(!buf) return;
+  try{ const d=loadDEM(buf); if(d&&d.regions.length){ DEM=d;
+    if(typeof scheduleElev==='function') scheduleElev();
+    if(typeof renderElev==='function') renderElev(); } }catch(e){}
+});
+
 function fetchElev(la,lo){
+  const dm=demElev(la,lo);
+  if(dm!=null) return Promise.resolve(dm);     // bundled DEM: instant, works offline
   const k=elevKey(la,lo);
   if(k in elevCache) return Promise.resolve(elevCache[k]);
   if(elevPending[k]) return elevPending[k];
@@ -1247,17 +1305,84 @@ function dlTileUrl(tmpl,subs,t){
 }
 function fmtMB(kb){ const mb=kb/1024; return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' MB'; }
 
-function dlRefresh(){
-  const z=dlZoomSel(), c=dlCount(z);
-  const kb=c.tiles*DL_AVG_KB, mins=Math.max(1,Math.round(c.tiles/DL_RATE/60));
-  let txt='≈ '+c.tiles.toLocaleString()+' tiles · ~'+fmtMB(kb)+' · ~'+mins+' min';
-  if(c.capped) txt+=' (this layer maxes at z'+c.maxN+')';
-  const est=$('#dlEst'); est.textContent=txt;
-  const tooBig=c.tiles>DL_TILE_CAP;
-  est.style.color=tooBig?'var(--warn)':'var(--ink)';
-  const btn=$('#dlStart'); btn.disabled=tooBig||dlBusy;
-  btn.style.opacity=(tooBig||dlBusy)?'.5':'1';
-  if(tooBig) est.textContent=txt+'  — zoom in to a smaller area';
+/* ---- pipeline corridor: buffer tiles within a radius of the loaded KML lines ---- */
+const DL_KEYMUL=1<<18;
+function lon2txf(lon,z){ return (lon+180)/360*Math.pow(2,z); }
+function lat2tyf(lat,z){ const r=lat*Math.PI/180; return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z); }
+function stampDisk(set,cx,cy,rT,z){ const m=Math.pow(2,z)-1, r2=rT*rT;
+  for(let dy=-rT;dy<=rT;dy++){ const yy=cy+dy; if(yy<0||yy>m) continue;
+    const dx=Math.floor(Math.sqrt(Math.max(0,r2-dy*dy)));
+    let x0=cx-dx,x1=cx+dx; if(x0<0)x0=0; if(x1>m)x1=m;
+    for(let xx=x0;xx<=x1;xx++) set.add(xx*DL_KEYMUL+yy); } }
+function dlModeSel(){ const c=document.querySelector('#dlMode .gp-chip.on'); return c?c.getAttribute('data-mode'):'corridor'; }
+function dlRadiusSel(){ const c=document.querySelector('#dlRadius .gp-chip.on'); return c?parseFloat(c.getAttribute('data-r')):5; }
+function dlOnLines(){ return (typeof kmls!=='undefined'?kmls:[]).filter(k=>k.on); }
+let _corr=null;   // cache {key, byZoom:{z:Set}|null, total}
+function _corrKey(rad,zHi){ return rad+'|'+zHi+'|'+dlOnLines().map(k=>k.id).join(','); }
+async function corridorTiles(rad,zLo,zHi){
+  const key=_corrKey(rad,zHi);
+  if(_corr&&_corr.key===key) return _corr;
+  const geoms=[];
+  for(const it of dlOnLines()){ try{ const g=await idbGet(it.id); if(g&&g.lines&&g.lines.length) geoms.push(g.lines); }catch(e){} }
+  if(!geoms.length){ _corr={key,byZoom:null,total:0}; return _corr; }
+  let lat0=53.5; for(const ls of geoms){ if(ls[0]&&ls[0].p&&ls[0].p.length){ lat0=ls[0].p[0][0]; break; } }
+  const byZoom={}; let total=0;
+  for(let z=zLo; z<=zHi; z++){
+    const set=new Set();
+    const tw=(40075.016686/Math.pow(2,z))*Math.cos(lat0*Math.PI/180);   // km per tile
+    const rT=Math.max(0,Math.ceil(rad/tw)), spacing=Math.max(1,rT*0.8);
+    for(const ls of geoms){ for(const ln of ls){ const p=ln.p; if(!p||!p.length) continue;
+      let sx=lon2txf(p[0][1],z), sy=lat2tyf(p[0][0],z);
+      stampDisk(set,Math.floor(sx),Math.floor(sy),rT,z);
+      for(let i=1;i<p.length;i++){ const tx=lon2txf(p[i][1],z), ty=lat2tyf(p[i][0],z);
+        const dx=tx-sx, dy=ty-sy, d=Math.sqrt(dx*dx+dy*dy);
+        if(d>=spacing){ const steps=Math.floor(d/spacing);
+          for(let s=1;s<=steps;s++){ const f=s*spacing/d; stampDisk(set,Math.floor(sx+dx*f),Math.floor(sy+dy*f),rT,z); }
+          sx=tx; sy=ty; } }
+      const lp=p[p.length-1]; stampDisk(set,Math.floor(lon2txf(lp[1],z)),Math.floor(lat2tyf(lp[0],z)),rT,z);
+    } }
+    byZoom[z]=set; total+=set.size;
+  }
+  _corr={key,byZoom,total}; return _corr;
+}
+function corridorList(){ const out=[];
+  if(_corr&&_corr.byZoom){ for(const z in _corr.byZoom){ const zz=parseInt(z,10);
+    _corr.byZoom[z].forEach(k=>out.push({x:Math.floor(k/DL_KEYMUL),y:k%DL_KEYMUL,z:zz})); } }
+  return out;
+}
+function dlZHi(){ const lyr=activeBaseLayer(), maxN=(lyr.options.maxNativeZoom||lyr.options.maxZoom||19);
+  const zSel=dlZoomSel(), zHi=Math.min(zSel,maxN); return {lyr,maxN,zSel,zHi,zLo:Math.min(8,zHi),capped:zSel>maxN}; }
+
+async function dlPlan(){
+  const r=dlZHi(), mode=dlModeSel();
+  if(mode==='corridor'){
+    if(!dlOnLines().length) return {tiles:0,mode,empty:true,capped:r.capped,maxN:r.maxN};
+    const c=await corridorTiles(dlRadiusSel(),r.zLo,r.zHi);
+    return {tiles:c.total,mode,empty:!c.byZoom,capped:r.capped,maxN:r.maxN};
+  }
+  const b=map.getBounds(),W=b.getWest(),E=b.getEast(),S=b.getSouth(),N=b.getNorth(); let n=0;
+  for(let z=r.zLo;z<=r.zHi;z++){ const x0=clampT(lon2tx(W,z),z),x1=clampT(lon2tx(E,z),z),y0=clampT(lat2ty(N,z),z),y1=clampT(lat2ty(S,z),z); n+=(x1-x0+1)*(y1-y0+1); }
+  return {tiles:n,mode,capped:r.capped,maxN:r.maxN};
+}
+
+let _dlSeq=0;
+async function dlRefresh(){
+  const mode=dlModeSel();
+  $('#dlRadius').style.display=(mode==='corridor')?'':'none';
+  const est=$('#dlEst'), btn=$('#dlStart'), seq=++_dlSeq;
+  if(mode==='corridor'&&!dlOnLines().length){
+    est.textContent='Import pipelines first (Lines), then they can be buffered for download.';
+    est.style.color='var(--muted)'; btn.disabled=true; btn.style.opacity='.5'; return; }
+  if(mode==='corridor'){ est.textContent='Calculating corridor…'; est.style.color='var(--muted)'; }
+  const p=await dlPlan();
+  if(seq!==_dlSeq) return;
+  const kb=p.tiles*DL_AVG_KB, mins=Math.max(1,Math.round(p.tiles/DL_RATE/60));
+  let txt='≈ '+p.tiles.toLocaleString()+' tiles · ~'+fmtMB(kb)+' · ~'+mins+' min';
+  if(p.capped) txt+=' (layer maxes at z'+p.maxN+')';
+  const tooBig=p.tiles>DL_TILE_CAP, none=!p.tiles;
+  if(tooBig) txt+=(mode==='corridor'?'  — reduce radius or detail':'  — zoom in to a smaller area');
+  est.textContent=txt; est.style.color=tooBig?'var(--warn)':'var(--ink)';
+  btn.disabled=tooBig||none||dlBusy; btn.style.opacity=(tooBig||none||dlBusy)?'.5':'1';
 }
 async function dlStoredRefresh(){
   let txt='';
@@ -1270,20 +1395,23 @@ async function dlStoredRefresh(){
 
 async function dlRun(){
   if(dlBusy) return;
-  const z=dlZoomSel(), c=dlCount(z);
-  if(c.tiles>DL_TILE_CAP){ toast('Area too large — zoom in'); return; }
+  const r=dlZHi(), mode=dlModeSel();
+  let tiles;
+  if(mode==='corridor'){
+    if(!dlOnLines().length){ toast('Import pipelines first'); return; }
+    await corridorTiles(dlRadiusSel(),r.zLo,r.zHi); tiles=corridorList();
+  } else {
+    const b=map.getBounds(),W=b.getWest(),E=b.getEast(),S=b.getSouth(),N=b.getNorth(); tiles=[];
+    for(let zz=r.zLo;zz<=r.zHi;zz++){ const x0=clampT(lon2tx(W,zz),zz),x1=clampT(lon2tx(E,zz),zz),y0=clampT(lat2ty(N,zz),zz),y1=clampT(lat2ty(S,zz),zz);
+      for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) tiles.push({x:x,y:y,z:zz}); }
+  }
+  if(!tiles.length){ toast('Nothing to download'); return; }
+  if(tiles.length>DL_TILE_CAP){ toast(mode==='corridor'?'Too large — reduce radius/detail':'Too large — zoom in'); return; }
   dlBusy=true; dlCancel=false;
   $('#dlStart').style.display='none'; $('#dlCancel').style.display='';
   $('#dlProgWrap').style.display='block';
   try{ if(navigator.storage&&navigator.storage.persist) await navigator.storage.persist(); }catch(e){}
-
-  const r=dlRange(z), tmpl=r.lyr._url, subs=r.lyr.options.subdomains, layerId=r.lyr.options.layerId;
-  const tiles=[];
-  for(let zz=r.zLo; zz<=r.zHi; zz++){
-    const x0=clampT(lon2tx(r.W,zz),zz), x1=clampT(lon2tx(r.E,zz),zz);
-    const y0=clampT(lat2ty(r.N,zz),zz), y1=clampT(lat2ty(r.S,zz),zz);
-    for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) tiles.push({x:x,y:y,z:zz});
-  }
+  const tmpl=r.lyr._url, subs=r.lyr.options.subdomains, layerId=r.lyr.options.layerId;
   const total=tiles.length; let done=0, saved=0, failed=0, idx=0;
   const bar=$('#dlBar'), ptxt=$('#dlProgTxt');
   function prog(){ const pct=total?Math.round(done/total*100):100;
@@ -1293,8 +1421,7 @@ async function dlRun(){
     while(idx<tiles.length){
       if(dlCancel) return;
       const t=tiles[idx++], url=dlTileUrl(tmpl,subs,t), key=layerId+'/'+t.z+'/'+t.x+'/'+t.y;
-      try{
-        if(await tileHas(key)){ saved++; }
+      try{ if(await tileHas(key)){ saved++; }
         else{ const resp=await fetch(url); if(resp.ok){ await tilePut(key,await resp.blob()); saved++; } else failed++; }
       }catch(e){ failed++; }
       done++; if((done&7)===0||done===total) prog();
@@ -1302,17 +1429,17 @@ async function dlRun(){
   }
   const CONC=8, ws=[]; for(let i=0;i<CONC;i++) ws.push(worker());
   await Promise.all(ws); prog();
-
   dlBusy=false;
   $('#dlCancel').style.display='none'; $('#dlStart').style.display='';
   if(dlCancel) toast('Download stopped — '+saved.toLocaleString()+' tiles saved');
-  else toast('Area saved offline — '+saved.toLocaleString()+' tiles'+(failed?(', '+failed+' failed'):''));
+  else toast('Saved offline — '+saved.toLocaleString()+' tiles'+(failed?(', '+failed+' failed'):''));
   setTimeout(()=>{ $('#dlProgWrap').style.display='none'; }, dlCancel?600:1500);
   dlRefresh(); dlStoredRefresh();
 }
 
-$('#dlZoom').addEventListener('click',e=>{ const c=e.target.closest('.gp-chip'); if(!c) return;
-  document.querySelectorAll('#dlZoom .gp-chip').forEach(x=>x.classList.remove('on')); c.classList.add('on'); dlRefresh(); });
+function dlChip(group){ $('#'+group).addEventListener('click',e=>{ const c=e.target.closest('.gp-chip'); if(!c) return;
+  document.querySelectorAll('#'+group+' .gp-chip').forEach(x=>x.classList.remove('on')); c.classList.add('on'); dlRefresh(); }); }
+dlChip('dlZoom'); dlChip('dlMode'); dlChip('dlRadius');
 $('#dlStart').onclick=dlRun;
 $('#dlCancel').onclick=()=>{ dlCancel=true; };
 $('#dlClear').onclick=async()=>{
@@ -1320,7 +1447,7 @@ $('#dlClear').onclick=async()=>{
   try{ const ks=await caches.keys(); for(const k of ks){ if(k.indexOf('surveylsd-tiles-')===0) await caches.delete(k); } }catch(e){}
   toast('Saved imagery cleared'); dlStoredRefresh();
 };
-map.on('moveend zoomend',()=>{ if($('#sheetKey').classList.contains('open')&&!dlBusy) dlRefresh(); });
+map.on('moveend zoomend',()=>{ if($('#sheetKey').classList.contains('open')&&!dlBusy&&dlModeSel()==='box') dlRefresh(); });
 $('#importBtn').onclick=()=>$('#fileIn').click();
 $('#fileIn').onchange=e=>{ const f=e.target.files[0]; if(f) addKmlFromFile(f); e.target.value=''; };
 $('#replaceIn').onchange=e=>{ const f=e.target.files[0]; if(f) replaceKmlFile(f); e.target.value=''; };
