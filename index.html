@@ -1036,6 +1036,22 @@ function simplifyLine(pts){
     if(dmax>SIMP_EPS && idx!==-1){ keep[idx]=1; st.push([s,idx]); st.push([idx,e]); } }
   const out=[]; for(let i=0;i<n;i++) if(keep[i]) out.push(pts[i]); return out;
 }
+/* Line geometry is stored as a flat Float32Array [la,lo,la,lo,...] — far less
+   memory and faster to iterate than an array of [la,lo] pairs, which matters on
+   the old 1GB iPads (a big network file drops from ~80MB to ~10MB). Simplification
+   runs first at full double precision; only the stored result is packed to Float32
+   (~1m worst case — well under the 10cm simplify and invisible on an overlay).
+   Leaflet still gets [lat,lon] pairs, but only for the on-screen points it draws. */
+function packFlat(pairs){ const n=pairs.length, f=new Float32Array(n*2);
+  for(let i=0;i<n;i++){ f[i*2]=pairs[i][0]; f[i*2+1]=pairs[i][1]; } return f; }
+function asFlat(p){                                   // accept flat OR legacy pair arrays
+  if(p instanceof Float32Array) return p;
+  if(ArrayBuffer.isView(p)) return new Float32Array(p);              // other typed array
+  if(Array.isArray(p)){ if(p.length&&Array.isArray(p[0])) return packFlat(p);  // legacy pairs
+    return Float32Array.from(p); }                                   // plain flat array
+  return new Float32Array(0); }
+function flatToPairs(p){ const np=p.length>>1, a=new Array(np);
+  for(let i=0;i<np;i++) a[i]=[p[i*2],p[i*2+1]]; return a; }
 function parseKml(text){
   const styles={}; let m;
   const sre=/<Style\b[^>]*\bid="([^"]+)"[^>]*>([\s\S]*?)<\/Style>/g;
@@ -1058,7 +1074,7 @@ function parseKml(text){
     const nmm=/<name>\s*([\s\S]*?)\s*<\/name>/.exec(b);
     const nm=nmm?nmm[1].replace(/<!\[CDATA\[|\]\]>/g,'').trim():'';
     let lm; const lre=/<LineString\b[^>]*>[\s\S]*?<coordinates\b[^>]*>([\s\S]*?)<\/coordinates>/g;
-    while((lm=lre.exec(b))){ const pts=parseCoordStr(lm[1]); if(pts.length) lines.push({c:color,w:width,p:simplifyLine(pts)}); }
+    while((lm=lre.exec(b))){ const pts=parseCoordStr(lm[1]); if(pts.length) lines.push({c:color,w:width,p:packFlat(simplifyLine(pts))}); }
     let pmt; const pre=/<Point\b[^>]*>[\s\S]*?<coordinates\b[^>]*>([\s\S]*?)<\/coordinates>/g;
     while((pmt=pre.exec(b))){ const pp=parseCoordStr(pmt[1]); if(pp.length) points.push({c:color,n:nm,ll:pp[0]}); } }
   return {lines,points};
@@ -1070,8 +1086,8 @@ function ensurePane(item){ const pn=paneName(item.id);
   if(!map.getPane(pn)) map.createPane(pn);
   map.getPane(pn).style.zIndex=String(KML_Z_BASE+(item.order||0));
   return pn; }
-function lineBBox(p){ let a=p[0][0],b=p[0][1],c=a,d=b;
-  for(let i=1;i<p.length;i++){ const la=p[i][0],lo=p[i][1];
+function lineBBox(p){ const np=p.length>>1; let a=p[0],b=p[1],c=a,d=b;
+  for(let i=1;i<np;i++){ const la=p[i*2],lo=p[i*2+1];
     if(la<a)a=la; else if(la>c)c=la; if(lo<b)b=lo; else if(lo>d)d=lo; }
   return [a,b,c,d]; }   // [minLa,minLo,maxLa,maxLo]
 /* build one multi-polyline per colour+width from a set of features */
@@ -1079,7 +1095,7 @@ function buildGroups(L0,feats,sf){
   const item=L0.item, out=[], groups={};
   for(let i=0;i<feats.length;i++){ const f=feats[i];
     const base=f.c||'#ffd24a', bw=f.w||3, key=base+'|'+bw;
-    let g=groups[key]; if(!g){ g=groups[key]={c:base,w:bw,seg:[]}; } g.seg.push(f.p); }
+    let g=groups[key]; if(!g){ g=groups[key]={c:base,w:bw,seg:[]}; } g.seg.push(flatToPairs(f.p)); }
   for(const key in groups){ const g=groups[key];
     const pl=L.polyline(g.seg,{renderer:L0.renderer,color:item.color||g.c,weight:item.width||g.w,opacity:.95,smoothFactor:sf,interactive:false});
     pl._baseColor=g.c; pl._baseWidth=g.w; pl.addTo(L0.grp); out.push(pl); }
@@ -1090,9 +1106,9 @@ function buildGroups(L0,feats,sf){
    ends are both off-screen — so nothing visible is ever dropped. */
 function outcode(la,lo,s,n,w,e){ let c=0; if(lo<w)c|=1; else if(lo>e)c|=2; if(la<s)c|=4; else if(la>n)c|=8; return c; }
 function clipLine(p,s,n,w,e){
-  const runs=[]; let cur=null, prev=outcode(p[0][0],p[0][1],s,n,w,e);
-  for(let i=1;i<p.length;i++){ const code=outcode(p[i][0],p[i][1],s,n,w,e);
-    if((prev&code)===0){ if(!cur){ cur=[p[i-1]]; runs.push(cur); } cur.push(p[i]); }
+  const np=p.length>>1, runs=[]; let cur=null, prev=outcode(p[0],p[1],s,n,w,e);
+  for(let i=1;i<np;i++){ const la=p[i*2],lo=p[i*2+1], code=outcode(la,lo,s,n,w,e);
+    if((prev&code)===0){ if(!cur){ cur=[[p[(i-1)*2],p[(i-1)*2+1]]]; runs.push(cur); } cur.push([la,lo]); }
     else cur=null;
     prev=code; }
   return runs;
@@ -1132,6 +1148,7 @@ function disposeLayer(id){ delete kmlLoading[id]; const L0=kmlLayers[id]; if(!L0
 const CULL_PTS=40000;   // layers bigger than this draw only what's near the view
 function buildLayer(item,geom){
   disposeLayer(item.id);
+  if(geom&&geom.lines) for(let k=0;k<geom.lines.length;k++) geom.lines[k].p=asFlat(geom.lines[k].p);
   const pn=ensurePane(item);
   const renderer=L.canvas({pane:pn,padding:.5});
   const grp=L.layerGroup();
@@ -1143,7 +1160,7 @@ function buildLayer(item,geom){
     cm._baseColor=p.c||'#ffd24a'; cm._isPoint=true; cm.addTo(grp); L0.pointPolys.push(cm);
     if(p.n) L.marker(p.ll,{pane:pn,interactive:false,icon:L.divIcon({className:'place-label',html:p.n,iconSize:null,iconAnchor:[-7,6]})}).addTo(grp);
     bounds.extend(L.latLng(p.ll)); }
-  const npts=geom.lines.reduce((a,l)=>a+l.p.length,0);
+  const npts=geom.lines.reduce((a,l)=>a+(l.p.length>>1),0);
   if(npts>CULL_PTS){
     L0.cull=true;
     L0.feats=geom.lines.map(f=>({c:f.c,w:f.w,p:f.p,bb:lineBBox(f.p)}));
@@ -1360,22 +1377,24 @@ async function corridorTiles(rad,zLo,zHi){
   const geoms=[];
   for(const it of dlOnLines()){ try{ const g=await idbGet(it.id); if(g&&g.lines&&g.lines.length) geoms.push(g.lines); }catch(e){} }
   if(!geoms.length){ _corr={key,byZoom:null,total:0}; return _corr; }
-  let lat0=53.5; for(const ls of geoms){ if(ls[0]&&ls[0].p&&ls[0].p.length){ lat0=ls[0].p[0][0]; break; } }
+  for(const ls of geoms) for(const ln of ls) ln.p=asFlat(ln.p);
+  let lat0=53.5; for(const ls of geoms){ if(ls[0]&&ls[0].p&&ls[0].p.length){ lat0=ls[0].p[0]; break; } }
   const byZoom={}; let total=0, work=0;
   for(let z=zLo; z<=zHi; z++){
     const set=new Set();
     const tw=(40075.016686/Math.pow(2,z))*Math.cos(lat0*Math.PI/180);   // km per tile
     const rT=Math.max(0,Math.ceil(rad/tw)), spacing=Math.max(1,rT*0.8);
     for(const ls of geoms){ for(const ln of ls){ const p=ln.p; if(!p||!p.length) continue;
-      let sx=lon2txf(p[0][1],z), sy=lat2tyf(p[0][0],z);
+      const np=p.length>>1;
+      let sx=lon2txf(p[1],z), sy=lat2tyf(p[0],z);
       stampDisk(set,Math.floor(sx),Math.floor(sy),rT,z);
-      for(let i=1;i<p.length;i++){ const tx=lon2txf(p[i][1],z), ty=lat2tyf(p[i][0],z);
+      for(let i=1;i<np;i++){ const tx=lon2txf(p[i*2+1],z), ty=lat2tyf(p[i*2],z);
         const dx=tx-sx, dy=ty-sy, d=Math.sqrt(dx*dx+dy*dy);
         if(d>=spacing){ const steps=Math.floor(d/spacing);
           for(let s=1;s<=steps;s++){ const f=s*spacing/d; stampDisk(set,Math.floor(sx+dx*f),Math.floor(sy+dy*f),rT,z); }
           sx=tx; sy=ty; }
         if((++work)>=YIELD_EVERY){ work=0; await _yield(); } }
-      const lp=p[p.length-1]; stampDisk(set,Math.floor(lon2txf(lp[1],z)),Math.floor(lat2tyf(lp[0],z)),rT,z);
+      stampDisk(set,Math.floor(lon2txf(p[(np-1)*2+1],z)),Math.floor(lat2tyf(p[(np-1)*2],z)),rT,z);
     } }
     byZoom[z]=set; total+=set.size; await _yield();
   }
@@ -1397,8 +1416,9 @@ async function elevArea(mode,radiusKm){
   if(mode==='corridor'){
     let S=90,W=180,N=-90,E=-180,any=false;
     for(const it of dlOnLines()){ let g; try{ g=await idbGet(it.id); }catch(e){ g=null; }
-      if(g&&g.lines) for(const ln of g.lines){ const p=ln.p; if(!p) continue;
-        for(let i=0;i<p.length;i++){ const la=p[i][0],lo=p[i][1]; if(la<S)S=la; if(la>N)N=la; if(lo<W)W=lo; if(lo>E)E=lo; any=true; } } }
+      if(g&&g.lines) for(const ln of g.lines){ const p=asFlat(ln.p); if(!p.length) continue;
+        const np=p.length>>1;
+        for(let i=0;i<np;i++){ const la=p[i*2],lo=p[i*2+1]; if(la<S)S=la; if(la>N)N=la; if(lo<W)W=lo; if(lo>E)E=lo; any=true; } } }
     if(!any) return null;
     const padLat=radiusKm/111, padLon=radiusKm/(111*Math.cos((S+N)/2*Math.PI/180));
     return {S:S-padLat,W:W-padLon,N:N+padLat,E:E+padLon};
@@ -1423,15 +1443,16 @@ async function buildElevRegion(mode,radiusKm,onProg,cancelled){
     for(const it of dlOnLines()){ let g; try{ g=await idbGet(it.id); }catch(e){ g=null; }
       if(!g||!g.lines) continue;
       let work=0;
-      for(const ln of g.lines){ const p=ln.p; if(!p||!p.length) continue;
-        let sr=(p[0][0]-S)/dLat, sc=(p[0][1]-W)/dLon; stamp(Math.round(sr),Math.round(sc));
-        for(let i=1;i<p.length;i++){ const rr=(p[i][0]-S)/dLat, cc=(p[i][1]-W)/dLon;
+      for(const ln of g.lines){ const p=asFlat(ln.p); if(!p.length) continue;
+        const np=p.length>>1;
+        let sr=(p[0]-S)/dLat, sc=(p[1]-W)/dLon; stamp(Math.round(sr),Math.round(sc));
+        for(let i=1;i<np;i++){ const rr=(p[i*2]-S)/dLat, cc=(p[i*2+1]-W)/dLon;
           const ddr=rr-sr, ddc=cc-sc, d=Math.sqrt(ddr*ddr+ddc*ddc);
           if(d>=spacing){ const steps=Math.floor(d/spacing);
             for(let s=1;s<=steps;s++){ const f=s*spacing/d; stamp(Math.round(sr+ddr*f),Math.round(sc+ddc*f)); }
             sr=rr; sc=cc; }
           if((++work)>=YIELD_EVERY){ work=0; await _yield(); } }
-        const lp=p[p.length-1]; stamp(Math.round((lp[0]-S)/dLat),Math.round((lp[1]-W)/dLon)); }
+        stamp(Math.round((p[(np-1)*2]-S)/dLat),Math.round((p[(np-1)*2+1]-W)/dLon)); }
     }
   }
   const idxs=[]; for(let i=0;i<total;i++) if(active[i]) idxs.push(i);
