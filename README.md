@@ -233,6 +233,12 @@ The fleet includes **older iPads**, so the code targets older Safari:
   `const`/`let`, template literals, `async`/`await`, spread, `for…of`, `Map`/`Set` are fine.
 - **GPU-cheap UI** — no `backdrop-filter`/blur, minimal shadows; performance is tuned for
   old hardware (chunked grid parsing, canvas rendering, viewport culling, coalesced readouts).
+- **Memory & responsiveness on A7/A8-class iPads** — base tile layers use `updateWhenIdle`,
+  `updateWhenZooming:false` and `keepBuffer:1` so few tiles are held or loaded mid-zoom;
+  marker/fade animations are off; downloaded-tile object URLs are revoked on load/unload. The
+  app detects low-core devices (`hardwareConcurrency`) and eases back download concurrency
+  (4 vs 8) and chunks the heavy corridor/elevation loops with periodic yields, so a large KML
+  never freezes the UI or gets the tab killed. Progress updates are throttled (~4/s).
 - All inline scripts are syntax-checked (`node --check`) before each deploy.
 
 ---
