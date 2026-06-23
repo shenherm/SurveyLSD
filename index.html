@@ -183,7 +183,7 @@
 
   <div style="border-top:1px solid var(--line);margin:16px 0 12px"></div>
   <h2 style="font-size:14px">Download imagery for this area</h2>
-  <div class="hint">Pick what to download, then tap once. Tiles are saved on the device for offline use. Downloads the imagery layer that's currently showing.</div>
+  <div class="hint">Pick what to download, then tap once. Imagery and ground elevation for the same area are saved on the device for offline use — re-download whenever your lines change. Saves the imagery layer that's currently showing.</div>
   <div class="gp-chips" id="dlMode" style="grid-template-columns:1fr 1fr">
     <button class="gp-chip on" data-mode="corridor"><b>Along pipelines</b><s>buffer the KML lines</s></button>
     <button class="gp-chip" data-mode="box"><b>Current view</b><s>the whole rectangle</s></button>
@@ -741,12 +741,41 @@ function demElev(la,lo){
   }
   return null;
 }
+/* persistent on-device DEM regions — downloaded along the corridor like imagery,
+   so ground/AGL work offline for whatever lines you're flying that day. Stored in
+   IndexedDB (no service worker), so this also works in a native build. */
+let _demDB=null;
+function demDB(){ if(_demDB) return Promise.resolve(_demDB);
+  return new Promise((res,rej)=>{ const r=indexedDB.open('patrolDem',1);
+    r.onupgradeneeded=()=>{ const d=r.result; if(!d.objectStoreNames.contains('dem')) d.createObjectStore('dem'); };
+    r.onsuccess=()=>{ _demDB=r.result; res(_demDB); }; r.onerror=()=>rej(r.error); }); }
+function demStoreGet(){ return demDB().then(db=>new Promise(res=>{ const tx=db.transaction('dem','readonly');
+  const rq=tx.objectStore('dem').get('regions'); rq.onsuccess=()=>res(rq.result||[]); rq.onerror=()=>res([]); })).catch(()=>[]); }
+function demStorePut(regions){ return demDB().then(db=>new Promise((res,rej)=>{ const tx=db.transaction('dem','readwrite');
+  tx.objectStore('dem').put(regions,'regions'); tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error); })).catch(()=>false); }
+function demStoreClear(){ return demDB().then(db=>new Promise(res=>{ const tx=db.transaction('dem','readwrite');
+  tx.objectStore('dem').clear(); tx.oncomplete=()=>res(true); tx.onerror=()=>res(false); })).catch(()=>false); }
+
+let _demBundled=[], _demStored=[];
+function rebuildDEM(){ const regions=_demBundled.concat(_demStored);
+  DEM=regions.length?{regions:regions}:null;
+  if(typeof scheduleElev==='function') scheduleElev();
+  if(typeof renderElev==='function') renderElev(); }
+function regionSig(r){ return Math.round(r.lat0*1e4)+'_'+Math.round(r.lon0*1e4)+'_'+r.nRows+'x'+r.nCols; }
+function demStoreUpsert(region){            // replace a same-footprint region, else append
+  const sig=regionSig(region);
+  _demStored=_demStored.filter(r=>regionSig(r)!==sig); _demStored.push(region);
+  rebuildDEM(); return demStorePut(_demStored); }
+
+// startup: optional bundled dem.bin + any previously downloaded regions
 fetch('dem.bin').then(r=>r.ok?r.arrayBuffer():null).catch(()=>null).then(buf=>{
-  if(!buf) return;
-  try{ const d=loadDEM(buf); if(d&&d.regions.length){ DEM=d;
-    if(typeof scheduleElev==='function') scheduleElev();
-    if(typeof renderElev==='function') renderElev(); } }catch(e){}
-});
+  if(buf){ try{ const d=loadDEM(buf); if(d&&d.regions.length) _demBundled=d.regions; }catch(e){} }
+  return demStoreGet();
+}).then(stored=>{
+  if(stored&&stored.length) _demStored=stored.map(r=>({lat0:r.lat0,lon0:r.lon0,dLat:r.dLat,dLon:r.dLon,
+    nRows:r.nRows,nCols:r.nCols,data:(r.data instanceof Int16Array)?r.data:new Int16Array(r.data)}));
+  rebuildDEM();
+}).catch(()=>{});
 
 function fetchElev(la,lo){
   const dm=demElev(la,lo);
@@ -1350,6 +1379,70 @@ function corridorList(){ const out=[];
     _corr.byZoom[z].forEach(k=>out.push({x:Math.floor(k/DL_KEYMUL),y:k%DL_KEYMUL,z:zz})); } }
   return out;
 }
+/* ---- ground elevation along the same area: sampled on-device, stored like imagery ---- */
+const ELEV_CELL_DEG=0.0025;        // ~280 m ground-sample spacing
+const ELEV_CELL_CAP=60000;         // safety cap on sampled points (~600 requests)
+function elevBatch(lats,lons){     // Open-Meteo elevation, up to 100 points per call
+  const url='https://api.open-meteo.com/v1/elevation?latitude='+lats.map(v=>v.toFixed(5)).join(',')+'&longitude='+lons.map(v=>v.toFixed(5)).join(',');
+  return fetch(url).then(r=>r.ok?r.json():null).then(j=>(j&&j.elevation)?j.elevation:null).catch(()=>null);
+}
+async function elevArea(mode,radiusKm){
+  if(mode==='corridor'){
+    let S=90,W=180,N=-90,E=-180,any=false;
+    for(const it of dlOnLines()){ let g; try{ g=await idbGet(it.id); }catch(e){ g=null; }
+      if(g&&g.lines) for(const ln of g.lines){ const p=ln.p; if(!p) continue;
+        for(let i=0;i<p.length;i++){ const la=p[i][0],lo=p[i][1]; if(la<S)S=la; if(la>N)N=la; if(lo<W)W=lo; if(lo>E)E=lo; any=true; } } }
+    if(!any) return null;
+    const padLat=radiusKm/111, padLon=radiusKm/(111*Math.cos((S+N)/2*Math.PI/180));
+    return {S:S-padLat,W:W-padLon,N:N+padLat,E:E+padLon};
+  }
+  const b=map.getBounds(); return {S:b.getSouth(),W:b.getWest(),N:b.getNorth(),E:b.getEast()};
+}
+async function buildElevRegion(mode,radiusKm,onProg,cancelled){
+  const box=await elevArea(mode,radiusKm); if(!box) return null;
+  const S=box.S,W=box.W,N=box.N,E=box.E, dLat=ELEV_CELL_DEG, dLon=ELEV_CELL_DEG;
+  const nRows=Math.max(2,Math.floor((N-S)/dLat)+1), nCols=Math.max(2,Math.floor((E-W)/dLon)+1);
+  const total=nRows*nCols, active=new Uint8Array(total);
+  if(mode==='box'){ active.fill(1); }
+  else {
+    const midLat=(S+N)/2;
+    const rRows=Math.max(1,Math.ceil(radiusKm/(dLat*111)));
+    const rCols=Math.max(1,Math.ceil(radiusKm/(dLon*111*Math.cos(midLat*Math.PI/180))));
+    const spacing=Math.max(1,Math.min(rRows,rCols)*0.8);
+    const stamp=function(cr,cc){ for(let dr=-rRows;dr<=rRows;dr++){ const rr=cr+dr; if(rr<0||rr>=nRows) continue;
+      const fr=dr/rRows, span=Math.floor(rCols*Math.sqrt(Math.max(0,1-fr*fr)));
+      let c0=cc-span,c1=cc+span; if(c0<0)c0=0; if(c1>=nCols)c1=nCols-1;
+      for(let c=c0;c<=c1;c++) active[rr*nCols+c]=1; } };
+    for(const it of dlOnLines()){ let g; try{ g=await idbGet(it.id); }catch(e){ g=null; }
+      if(!g||!g.lines) continue;
+      for(const ln of g.lines){ const p=ln.p; if(!p||!p.length) continue;
+        let sr=(p[0][0]-S)/dLat, sc=(p[0][1]-W)/dLon; stamp(Math.round(sr),Math.round(sc));
+        for(let i=1;i<p.length;i++){ const rr=(p[i][0]-S)/dLat, cc=(p[i][1]-W)/dLon;
+          const ddr=rr-sr, ddc=cc-sc, d=Math.sqrt(ddr*ddr+ddc*ddc);
+          if(d>=spacing){ const steps=Math.floor(d/spacing);
+            for(let s=1;s<=steps;s++){ const f=s*spacing/d; stamp(Math.round(sr+ddr*f),Math.round(sc+ddc*f)); }
+            sr=rr; sc=cc; } }
+        const lp=p[p.length-1]; stamp(Math.round((lp[0]-S)/dLat),Math.round((lp[1]-W)/dLon)); }
+    }
+  }
+  const idxs=[]; for(let i=0;i<total;i++) if(active[i]) idxs.push(i);
+  if(!idxs.length) return null;
+  if(idxs.length>ELEV_CELL_CAP) return {tooBig:true,count:idxs.length};
+  const data=new Int16Array(total); data.fill(DEM_ND);
+  let done=0;
+  for(let i=0;i<idxs.length;i+=100){
+    if(cancelled&&cancelled()) return {cancelled:true};
+    const chunk=idxs.slice(i,i+100);
+    const lats=chunk.map(ix=>S+Math.floor(ix/nCols)*dLat);
+    const lons=chunk.map(ix=>W+(ix%nCols)*dLon);
+    let elevs=await elevBatch(lats,lons);
+    if(!elevs){ await new Promise(r=>setTimeout(r,1500)); elevs=await elevBatch(lats,lons); }
+    if(elevs) for(let j=0;j<chunk.length;j++){ const v=elevs[j];
+      data[chunk[j]]=(v!=null&&isFinite(v))?Math.max(-32000,Math.min(32000,Math.round(v))):DEM_ND; }
+    done+=chunk.length; if(onProg) onProg(done,idxs.length);
+  }
+  return {region:{lat0:S,lon0:W,dLat:dLat,dLon:dLon,nRows:nRows,nCols:nCols,data:data},count:idxs.length};
+}
 function dlZHi(){ const lyr=activeBaseLayer(), maxN=(lyr.options.maxNativeZoom||lyr.options.maxZoom||19);
   const zSel=dlZoomSel(), zHi=Math.min(zSel,maxN); return {lyr,maxN,zSel,zHi,zLo:Math.min(8,zHi),capped:zSel>maxN}; }
 
@@ -1381,12 +1474,14 @@ async function dlRefresh(){
   if(p.capped) txt+=' (layer maxes at z'+p.maxN+')';
   const tooBig=p.tiles>DL_TILE_CAP, none=!p.tiles;
   if(tooBig) txt+=(mode==='corridor'?'  — reduce radius or detail':'  — zoom in to a smaller area');
+  else if(!none) txt+=' · + ground elevation';
   est.textContent=txt; est.style.color=tooBig?'var(--warn)':'var(--ink)';
   btn.disabled=tooBig||none||dlBusy; btn.style.opacity=(tooBig||none||dlBusy)?'.5':'1';
 }
 async function dlStoredRefresh(){
   let txt='';
   try{ const n=await tileCount(); if(n) txt=n.toLocaleString()+' tiles saved'; }catch(e){}
+  if(_demStored&&_demStored.length){ const a=_demStored.length; txt=(txt?txt+' · ':'')+a+' elevation area'+(a>1?'s':''); }
   try{ if(navigator.storage&&navigator.storage.estimate){ const e=await navigator.storage.estimate();
     const used='Saved on device: '+fmtMB((e.usage||0)/1024)+(e.quota?(' of '+fmtMB((e.quota||0)/1024)+' available'):'');
     txt=txt?(txt+' · '+used):used; } }catch(e){}
@@ -1429,10 +1524,29 @@ async function dlRun(){
   }
   const CONC=8, ws=[]; for(let i=0;i<CONC;i++) ws.push(worker());
   await Promise.all(ws); prog();
+
+  // ---- phase 2: ground elevation along the same area (best-effort; imagery already saved) ----
+  let elevSaved=0, elevTooBig=false, elevErr=false;
+  if(!dlCancel){
+    bar.style.width='0%'; ptxt.textContent='Ground elevation…';
+    try{
+      const res=await buildElevRegion(mode,dlRadiusSel(),
+        function(d,t){ const pct=t?Math.round(d/t*100):100; bar.style.width=pct+'%';
+          ptxt.textContent='Ground elevation '+d.toLocaleString()+' / '+t.toLocaleString()+' ('+pct+'%)'; },
+        function(){ return dlCancel; });
+      if(res&&res.region){ await demStoreUpsert(res.region); elevSaved=res.count; }
+      else if(res&&res.tooBig) elevTooBig=true;
+    }catch(e){ elevErr=true; }
+  }
+
   dlBusy=false;
   $('#dlCancel').style.display='none'; $('#dlStart').style.display='';
   if(dlCancel) toast('Download stopped — '+saved.toLocaleString()+' tiles saved');
-  else toast('Saved offline — '+saved.toLocaleString()+' tiles'+(failed?(', '+failed+' failed'):''));
+  else { let m='Saved offline — '+saved.toLocaleString()+' tiles'+(failed?(', '+failed+' failed'):'');
+    if(elevSaved) m+=' · '+elevSaved.toLocaleString()+' elevation pts';
+    else if(elevTooBig) m+=' · elevation skipped (area too large)';
+    else if(elevErr) m+=' · elevation unavailable';
+    toast(m); }
   setTimeout(()=>{ $('#dlProgWrap').style.display='none'; }, dlCancel?600:1500);
   dlRefresh(); dlStoredRefresh();
 }
@@ -1444,8 +1558,9 @@ $('#dlStart').onclick=dlRun;
 $('#dlCancel').onclick=()=>{ dlCancel=true; };
 $('#dlClear').onclick=async()=>{
   await tileClear();
+  try{ await demStoreClear(); _demStored=[]; rebuildDEM(); }catch(e){}
   try{ const ks=await caches.keys(); for(const k of ks){ if(k.indexOf('surveylsd-tiles-')===0) await caches.delete(k); } }catch(e){}
-  toast('Saved imagery cleared'); dlStoredRefresh();
+  toast('Saved imagery & elevation cleared'); dlStoredRefresh();
 };
 map.on('moveend zoomend',()=>{ if($('#sheetKey').classList.contains('open')&&!dlBusy&&dlModeSel()==='box') dlRefresh(); });
 $('#importBtn').onclick=()=>$('#fileIn').click();

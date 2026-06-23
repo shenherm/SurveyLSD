@@ -67,10 +67,11 @@ is deliberate: it means offline works the same in the browser PWA and in a futur
 - **App shell** — `index.html`, the vendored libraries and icons are precached by the
   service worker so the PWA also *loads* offline. (In a native build the shell is bundled in
   the app instead.)
-- **Elevation** — works offline anywhere covered by the optional bundled **DEM** (`dem.bin`,
-  see *Elevation (DEM)* below): ground/AGL are read instantly from on-device terrain data with
-  no network, in both the PWA and a native build. Outside DEM coverage it falls back to the
-  online elevation API (network-first, service-worker-cached in the PWA).
+- **Elevation** — downloaded **together with the corridor imagery** and stored in
+  **IndexedDB**, so ground/AGL read instantly from on-device terrain with no network, for
+  whatever lines you're flying. Re-downloading for new lines refreshes it. Outside saved
+  coverage it falls back to the online elevation API (service-worker-cached in the PWA). An
+  optional pre-built `dem.bin` can still be bundled too (see *Elevation (DEM)*).
 
 **Note:** the first load, the imagery download, and a first KML import must be online — the
 device can only store what it has fetched at least once. Install, import lines, and
@@ -165,12 +166,22 @@ upload the resulting `ats_grid.bin` / `sk_grid.bin` to the repo root.
 
 ## Elevation (DEM)
 
-Ground/AGL elevation can run **fully offline** from an optional bundled terrain grid,
-`dem.bin`. When present it's the *first* source the app tries (instant, no network); the
-online elevation API is only used outside DEM coverage. Without `dem.bin` the app still works
-— elevation just stays online-only — so it's safe to ship before the DEM is built.
+Ground/AGL elevation runs **offline** from terrain stored on the device. There are two ways
+terrain gets there; the app uses whatever is available (first match wins), and without either
+it simply stays online-only — nothing breaks.
 
-`dem.bin` uses a compact multi-region binary (`DEM1`), little-endian:
+**1. Downloaded along the corridor (primary).** When you download corridor imagery, the app
+also samples ground elevation over the *same* area and stores it in IndexedDB — so elevation
+coverage tracks the lines you're flying that day and refreshes every time you re-download. It
+samples a regular ~280 m grid masked to the corridor (only cells near the lines), from the
+**same Open-Meteo source** the app uses online, in batches of 100 points. Storage is tiny
+(tens to a few hundred KB per area). A safety cap (~60,000 points) skips elevation on an
+oversized area without affecting the imagery. Because this lives in IndexedDB, it also works
+in a **native build** with no service worker. Cleared by **Clear saved imagery**.
+
+**2. Pre-built `dem.bin` (optional).** A static terrain file can also be bundled at the repo
+root and is loaded alongside any downloaded regions. Useful for permanent base coverage. It
+uses a compact multi-region binary (`DEM1`), little-endian:
 
 ```
 'DEM1'                     4-byte magic
@@ -184,16 +195,11 @@ per region:
   int16[nRows*nCols]       elevation, metres, row-major; -32768 = nodata
 ```
 
-The app loads it, and `demElev(lat,lon)` does a bilinear lookup within whichever region
-covers the point (returns `null` outside coverage or on nodata → online fallback).
-
-**Building `dem.bin`** is done in **Google Colab**, like the grids, with `build_dem.py`. It
-samples the **same Open-Meteo elevation source** the app uses online (keyless), so offline
-readings match online ones. Point it at your pipeline `.kml` file(s) — it builds padded
-regions around each file's bounding box — or list bounding boxes by hand, pick a grid spacing
-(default ~280 m), run all, and upload the resulting `dem.bin` to the repo root. Keep coverage
-to the areas you actually patrol; the service worker precaches `dem.bin` best-effort (its
-absence never breaks install).
+`demElev(lat,lon)` does a bilinear lookup within whichever region covers the point (returns
+`null` outside coverage or on nodata → online fallback). Build `dem.bin` in Colab with
+`build_dem.py` (same Open-Meteo source); point it at your pipeline `.kml` file(s) or list
+bounding boxes, run all, and upload `dem.bin` to the repo root. The service worker precaches
+it best-effort (its absence never breaks install).
 
 ---
 
