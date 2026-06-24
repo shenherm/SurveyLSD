@@ -61,7 +61,10 @@ is deliberate: it means offline works the same in the browser PWA and in a futur
   - **Current view (box)** — the old behaviour: every tile in the current rectangle.
 
   Pick a detail level (z14–z17) and tap **Download**. Live tile/size/time estimate, progress
-  bar and cancel; refuses jobs over ~25,000 tiles (reduce radius/detail, or zoom in). A custom
+  bar and cancel. The limit is the device's **free storage**, not a fixed size: the estimate
+  warns if a job wouldn't fit (leaving ~250 MB headroom), and a download that does hit the
+  storage ceiling mid-run stops cleanly and reports how many tiles were saved. Multi-GB
+  downloads are fine on a device with the room. A custom
   map layer reads stored tiles straight back when offline, falling through to the network when
   online. The sheet shows how many tiles are saved and a **Clear saved imagery** button.
 - **App shell** — `index.html`, the vendored libraries and icons are precached by the

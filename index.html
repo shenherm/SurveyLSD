@@ -1328,10 +1328,21 @@ $('#saveKey').onclick=()=>{ applyEsriKey($('#inKey').value);
 $('#clearKey').onclick=()=>{ applyEsriKey(''); $('#inKey').value=''; toast('Key cleared'); };
 
 /* ---------- One-click offline imagery download for the current view ---------- */
-const DL_TILE_CAP=25000;            // refuse downloads larger than this (zoom in instead)
+const DL_TILE_CAP=400000;            // absolute backstop (~9GB); the practical limit is the device's free storage, checked live
+const DL_STORE_MARGIN=250*1024*1024; // always leave at least this much device storage free
 const DL_AVG_KB=24;                 // rough avg satellite tile size for estimates
 const DL_RATE=10;                   // rough tiles/sec over wifi for the time estimate
-let dlCancel=false, dlBusy=false;
+let dlCancel=false, dlBusy=false, dlQuota=false;
+let _freeCache=null, _freeAt=0;
+function freeBytes(){                 // best-effort free storage (quota - usage), or null if unknown
+  const now=Date.now(); if(_freeCache!=null&&now-_freeAt<8000) return Promise.resolve(_freeCache);
+  if(navigator.storage&&navigator.storage.estimate){
+    return navigator.storage.estimate().then(function(e){
+      if(e&&e.quota){ _freeCache=Math.max(0,(e.quota||0)-(e.usage||0)); _freeAt=now; return _freeCache; }
+      return null; }).catch(function(){ return null; });
+  }
+  return Promise.resolve(null);
+}
 
 function dlZoomSel(){ const c=document.querySelector('#dlZoom .gp-chip.on'); return c?parseInt(c.getAttribute('data-z'),10):15; }
 function activeBaseLayer(){ if(map.hasLayer(esri)) return esri; if(map.hasLayer(s2)) return s2; if(map.hasLayer(osm)) return osm; return esri; }
@@ -1412,7 +1423,7 @@ function corridorList(){ const out=[];
 }
 /* ---- ground elevation along the same area: sampled on-device, stored like imagery ---- */
 const ELEV_CELL_DEG=0.0025;        // ~280 m ground-sample spacing
-const ELEV_CELL_CAP=60000;         // safety cap on sampled points (~600 requests)
+const ELEV_CELL_CAP=120000;        // safety cap on sampled points (~1200 requests); large enough to stay with big corridors
 function elevBatch(lats,lons){     // Open-Meteo elevation, up to 100 points per call
   const url='https://api.open-meteo.com/v1/elevation?latitude='+lats.map(v=>v.toFixed(5)).join(',')+'&longitude='+lons.map(v=>v.toFixed(5)).join(',');
   return fetch(url).then(r=>r.ok?r.json():null).then(j=>(j&&j.elevation)?j.elevation:null).catch(()=>null);
@@ -1504,14 +1515,19 @@ async function dlRefresh(){
   if(mode==='corridor'){ est.textContent='Calculating corridor…'; est.style.color='var(--muted)'; }
   const p=await dlPlan();
   if(seq!==_dlSeq) return;
-  const kb=p.tiles*DL_AVG_KB, mins=Math.max(1,Math.round(p.tiles/DL_RATE/60));
-  let txt='≈ '+p.tiles.toLocaleString()+' tiles · ~'+fmtMB(kb)+' · ~'+mins+' min';
+  const bytes=p.tiles*DL_AVG_KB*1024, mins=Math.max(1,Math.round(p.tiles/DL_RATE/60));
+  let txt='≈ '+p.tiles.toLocaleString()+' tiles · ~'+fmtMB(p.tiles*DL_AVG_KB)+' · ~'+mins+' min';
   if(p.capped) txt+=' (layer maxes at z'+p.maxN+')';
-  const tooBig=p.tiles>DL_TILE_CAP, none=!p.tiles;
-  if(tooBig) txt+=(mode==='corridor'?'  — reduce radius or detail':'  — zoom in to a smaller area');
+  const none=!p.tiles;
+  const free=await freeBytes(); if(seq!==_dlSeq) return;
+  const noRoom=(free!=null)&&(bytes>free-DL_STORE_MARGIN);
+  const tooBig=p.tiles>DL_TILE_CAP;
+  if(tooBig) txt+='  — that\'s enormous; reduce radius or detail';
+  else if(noRoom) txt+='  — not enough free space (~'+fmtMB(free/1024)+' free)';
   else if(!none) txt+=' · + ground elevation';
-  est.textContent=txt; est.style.color=tooBig?'var(--warn)':'var(--ink)';
-  btn.disabled=tooBig||none||dlBusy; btn.style.opacity=(tooBig||none||dlBusy)?'.5':'1';
+  est.textContent=txt; est.style.color=(tooBig||noRoom)?'var(--warn)':'var(--ink)';
+  const block=tooBig||noRoom||none||dlBusy;
+  btn.disabled=block; btn.style.opacity=block?'.5':'1';
 }
 async function dlStoredRefresh(){
   let txt='';
@@ -1536,8 +1552,11 @@ async function dlRun(){
       for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) tiles.push({x:x,y:y,z:zz}); }
   }
   if(!tiles.length){ toast('Nothing to download'); return; }
-  if(tiles.length>DL_TILE_CAP){ toast(mode==='corridor'?'Too large — reduce radius/detail':'Too large — zoom in'); return; }
-  dlBusy=true; dlCancel=false;
+  if(tiles.length>DL_TILE_CAP){ toast('That\'s an enormous area — reduce radius/detail'); return; }
+  const _free=await freeBytes();
+  if(_free!=null && tiles.length*DL_AVG_KB*1024 > _free-DL_STORE_MARGIN){
+    toast('Not enough free space — ~'+fmtMB(_free/1024)+' free, need ~'+fmtMB(tiles.length*DL_AVG_KB)); return; }
+  dlBusy=true; dlCancel=false; dlQuota=false;
   $('#dlStart').style.display='none'; $('#dlCancel').style.display='';
   $('#dlProgWrap').style.display='block';
   try{ if(navigator.storage&&navigator.storage.persist) await navigator.storage.persist(); }catch(e){}
@@ -1554,7 +1573,7 @@ async function dlRun(){
       const t=tiles[idx++], url=dlTileUrl(tmpl,subs,t), key=layerId+'/'+t.z+'/'+t.x+'/'+t.y;
       try{ if(await tileHas(key)){ saved++; }
         else{ const resp=await fetch(url); if(resp.ok){ await tilePut(key,await resp.blob()); saved++; } else failed++; }
-      }catch(e){ failed++; }
+      }catch(e){ if(e&&(e.name==='QuotaExceededError'||e.code===22||(e.message&&/quota/i.test(e.message)))){ dlQuota=true; dlCancel=true; return; } failed++; }
       done++; prog(done===total);
     }
   }
@@ -1577,13 +1596,14 @@ async function dlRun(){
 
   dlBusy=false;
   $('#dlCancel').style.display='none'; $('#dlStart').style.display='';
-  if(dlCancel) toast('Download stopped — '+saved.toLocaleString()+' tiles saved');
+  if(dlQuota) toast('Device storage full — saved '+saved.toLocaleString()+' tiles; free space or clear saved imagery');
+  else if(dlCancel) toast('Download stopped — '+saved.toLocaleString()+' tiles saved');
   else { let m='Saved offline — '+saved.toLocaleString()+' tiles'+(failed?(', '+failed+' failed'):'');
     if(elevSaved) m+=' · '+elevSaved.toLocaleString()+' elevation pts';
     else if(elevTooBig) m+=' · elevation skipped (area too large)';
     else if(elevErr) m+=' · elevation unavailable';
     toast(m); }
-  setTimeout(()=>{ $('#dlProgWrap').style.display='none'; }, dlCancel?600:1500);
+  setTimeout(()=>{ $('#dlProgWrap').style.display='none'; }, (dlCancel||dlQuota)?900:1500);
   dlRefresh(); dlStoredRefresh();
 }
 
