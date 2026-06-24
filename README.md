@@ -64,9 +64,11 @@ is deliberate: it means offline works the same in the browser PWA and in a futur
   bar and cancel. The limit is the device's **free storage**, not a fixed size: the estimate
   warns if a job wouldn't fit (leaving ~250 MB headroom), and a download that does hit the
   storage ceiling mid-run stops cleanly and reports how many tiles were saved. Multi-GB
-  downloads are fine on a device with the room. A custom
-  map layer reads stored tiles straight back when offline, falling through to the network when
-  online. The sheet shows how many tiles are saved and a **Clear saved imagery** button.
+  downloads are fine on a device with the room. A custom canvas tile layer reads stored tiles
+  straight back when offline, falls through to the network when online, and — when you zoom in
+  past the level you downloaded — **overzooms**: it scales up the best lower-zoom tile it has
+  instead of going black (transparent only if nothing at all is stored there). The sheet shows
+  how many tiles are saved and a **Clear saved imagery** button.
 - **App shell** — `index.html`, the vendored libraries and icons are precached by the
   service worker so the PWA also *loads* offline. (In a native build the shell is bundled in
   the app instead.)
@@ -125,9 +127,12 @@ The live way to add pipelines is **Lines → Import** in the app.
   (LSD → lat/lon) is used by the Go-to pad. Until a grid finishes parsing, an approximate
   reading is shown and labelled.
 - **KML rendering.** Imported geometry is stored in **IndexedDB** (`patrolKml`), with only
-  small metadata (name, colour, width, order) in `localStorage`. Each layer draws on its own
-  Leaflet canvas pane, grouped by colour/width, with **viewport culling** and Douglas–Peucker
-  simplification (~10 cm) so big files stay responsive.
+  small metadata (name, colour, width, order) in `localStorage`. All layers draw on **one
+  shared canvas renderer** (see the performance note) grouped by colour/width, with Douglas–
+  Peucker simplification (~10 cm). Layers over ~3,000 points use **viewport culling** when
+  zoomed in (only the on-screen geometry is drawn) and a light **decimated overview** when
+  zoomed out (below z10), so the whole route stays visible at any zoom without drawing every
+  vertex.
 - **Imagery layers.** Esri World Imagery (sharpest; needs a free ArcGIS API key stored on
   the device), Sentinel-2 cloudless (EOX, keyless, ~10 m), or OpenStreetMap — switchable in
   the layers control.
