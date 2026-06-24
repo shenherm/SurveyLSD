@@ -233,18 +233,25 @@ The fleet includes **older iPads**, so the code targets older Safari:
   `const`/`let`, template literals, `async`/`await`, spread, `for…of`, `Map`/`Set` are fine.
 - **GPU-cheap UI** — no `backdrop-filter`/blur, minimal shadows; performance is tuned for
   old hardware (chunked grid parsing, canvas rendering, viewport culling, coalesced readouts).
-- **Memory & responsiveness on A7/A8-class iPads** — pipeline geometry is stored as flat
-  `Float32Array` coordinate runs rather than arrays of `[lat,lon]` pairs, cutting a large
-  network file from roughly 80 MB to ~10 MB and iterating much faster (no pointer chasing);
-  Leaflet is handed `[lat,lon]` pairs only for the on-screen points it actually draws.
-  Coordinates simplify at full precision first, so the only loss is ~1 m Float32 rounding on
-  the overlay (the authoritative LSD/coords come from the crosshair + survey grid, not the
-  KML). Base tile layers use `updateWhenIdle`, `updateWhenZooming:false` and `keepBuffer:1`
-  so few tiles are held or loaded mid-zoom; marker/fade animations are off; downloaded-tile
-  object URLs are revoked on load/unload. The app detects low-core devices
-  (`hardwareConcurrency`) and eases back download concurrency (4 vs 8) and chunks the heavy
-  corridor/elevation loops with periodic yields, so a large KML never freezes the UI or gets
-  the tab killed. Progress updates are throttled (~4/s).
+- **Memory & responsiveness on A7/A8-class iPads** — the biggest lever is that **all KML
+  layers share one canvas renderer**: a separate canvas per layer each allocates a full-screen
+  Retina buffer (tens of MB), so loading many lines exhausted memory and iOS killed/reloaded
+  the tab. One shared canvas keeps render memory flat no matter how many lines are on (extra
+  lines cost draw time, not memory); the trade-off is that inter-layer paint order follows
+  draw order rather than a per-layer z-index. Turning a layer **off frees its geometry and
+  polylines from RAM** (the geometry stays in IndexedDB and reloads when turned back on), so
+  memory scales with what's *visible*, not what's *loaded*. Layers over ~3,000 points draw only
+  what's near the view (viewport-bounded), and on startup on-layers load one at a time.
+  Pipeline geometry is stored as flat `Float32Array` runs rather than arrays of `[lat,lon]`
+  pairs, cutting a large network file from ~80 MB to ~10 MB and iterating much faster; Leaflet
+  is handed `[lat,lon]` pairs only for the on-screen points it draws. Coordinates simplify at
+  full precision first, so the only loss is ~1 m Float32 rounding on the overlay (the
+  authoritative LSD/coords come from the crosshair + survey grid, not the KML). Base tile
+  layers use `updateWhenIdle`, `updateWhenZooming:false` and `keepBuffer:1`; marker/fade
+  animations are off; downloaded-tile object URLs are revoked on load/unload. Low-core devices
+  (`hardwareConcurrency`) ease back download concurrency (4 vs 8) and the heavy
+  corridor/elevation loops yield periodically so they never freeze the UI. Progress updates are
+  throttled (~4/s).
 - All inline scripts are syntax-checked (`node --check`) before each deploy.
 
 ---

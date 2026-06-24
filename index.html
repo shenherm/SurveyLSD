@@ -1080,12 +1080,19 @@ function parseKml(text){
   return {lines,points};
 }
 
-/* ---- rendering ---- */
-function paneName(id){ return 'kml_'+id; }
-function ensurePane(item){ const pn=paneName(item.id);
-  if(!map.getPane(pn)) map.createPane(pn);
-  map.getPane(pn).style.zIndex=String(KML_Z_BASE+(item.order||0));
-  return pn; }
+/* ---- rendering ----
+   All KML layers share ONE canvas renderer in ONE pane. A separate canvas per
+   layer would each allocate a full-screen Retina buffer (tens of MB), so loading
+   many lines exhausted memory and iOS killed/reloaded the tab. One shared canvas
+   keeps render memory flat no matter how many lines are on — extra lines cost
+   draw time, not memory. Inter-layer paint order follows draw order. */
+const KML_PANE='kmlShared';
+let _kmlRenderer=null;
+function kmlRenderer(){ if(_kmlRenderer) return _kmlRenderer;
+  if(!map.getPane(KML_PANE)){ map.createPane(KML_PANE); map.getPane(KML_PANE).style.zIndex=String(KML_Z_BASE); }
+  _kmlRenderer=L.canvas({pane:KML_PANE,padding:0.2}); return _kmlRenderer; }
+function paneName(id){ return KML_PANE; }
+function ensurePane(item){ kmlRenderer(); return KML_PANE; }
 function lineBBox(p){ const np=p.length>>1; let a=p[0],b=p[1],c=a,d=b;
   for(let i=1;i<np;i++){ const la=p[i*2],lo=p[i*2+1];
     if(la<a)a=la; else if(la>c)c=la; if(lo<b)b=lo; else if(lo>d)d=lo; }
@@ -1145,12 +1152,12 @@ function disposeLayer(id){ delete kmlLoading[id]; const L0=kmlLayers[id]; if(!L0
   if(L0._t){ clearTimeout(L0._t); L0._t=null; }
   if(L0.grp) map.removeLayer(L0.grp);
   delete kmlLayers[id]; }
-const CULL_PTS=40000;   // layers bigger than this draw only what's near the view
+const CULL_PTS=3000;   // layers bigger than this draw only what's near the view (keeps many-line memory bounded by the viewport, not total geometry)
 function buildLayer(item,geom){
   disposeLayer(item.id);
   if(geom&&geom.lines) for(let k=0;k<geom.lines.length;k++) geom.lines[k].p=asFlat(geom.lines[k].p);
   const pn=ensurePane(item);
-  const renderer=L.canvas({pane:pn,padding:.5});
+  const renderer=kmlRenderer();
   const grp=L.layerGroup();
   const L0={grp,renderer,item,polys:[],pointPolys:[],linePolys:[],feats:null,cull:false,onMove:null,_t:null,bounds:null};
   kmlLayers[item.id]=L0;
@@ -1180,7 +1187,7 @@ function applyStyle(item){ const L0=kmlLayers[item.id]; if(!L0) return;
   for(let i=0;i<L0.polys.length;i++){ const pl=L0.polys[i];
     if(pl._isPoint) pl.setStyle({fillColor:item.color||pl._baseColor});
     else pl.setStyle({color:item.color||pl._baseColor, weight:item.width||pl._baseWidth||3}); } }
-function applyOrder(item){ const p=map.getPane(paneName(item.id)); if(p) p.style.zIndex=String(KML_Z_BASE+(item.order||0)); }
+function applyOrder(item){ /* shared canvas: paint order = draw order; no per-layer pane z-index */ }
 function setOrders(){ for(let i=0;i<kmls.length;i++){ kmls[i].order=kmls.length-1-i; applyOrder(kmls[i]); } }
 function moveKml(id,dir){ const i=kmls.findIndex(k=>k.id===id); const j=i+dir;
   if(i<0||j<0||j>=kmls.length) return; const t=kmls[i]; kmls[i]=kmls[j]; kmls[j]=t;
@@ -1226,7 +1233,6 @@ async function installBuiltins(){
   // remove built-ins that have been withdrawn from the published manifest
   for(let i=kmls.length-1;i>=0;i--){ const k=kmls[i];
     if(k.builtin && !pub[k.id]){ disposeLayer(k.id);
-      const pane=map.getPane(paneName(k.id)); if(pane&&pane.parentNode) pane.parentNode.removeChild(pane);
       idbDel(k.id); delete kmlInstalled[k.id]; kmls.splice(i,1); changed=true; } }
   for(const ln of man.lines){
     if(kmlDismissed.indexOf(ln.id)>=0) continue;
@@ -1297,7 +1303,7 @@ $('#kmlList').addEventListener('click',e=>{
   const act=btn.getAttribute('data-act');
   if(act==='toggle'){ item.on=!item.on; saveKmls();
     if(item.on){ if(kmlLayers[id]){ kmlLayers[id].grp.addTo(map); if(kmlLayers[id].cull) cullRedraw(kmlLayers[id]); } else loadKmlGeom(item); }
-    else if(kmlLayers[id]) map.removeLayer(kmlLayers[id].grp);
+    else disposeLayer(id);   // free its geometry/polylines from memory; geometry stays in storage, reloads when turned back on
     renderKmlList(); return; }
   if(act==='expand'){ kmlExpanded=(kmlExpanded===id?null:id); renderKmlList(); return; }
   if(act==='up'){ moveKml(id,-1); return; }
@@ -1310,7 +1316,6 @@ $('#kmlList').addEventListener('click',e=>{
     if(kmlLayers[id]) go(); else loadKmlGeom(item).then(go); return; }
   if(act==='replace'){ replaceTargetId=id; $('#replaceIn').click(); return; }
   if(act==='del'){ disposeLayer(id);
-    const pane=map.getPane(paneName(id)); if(pane&&pane.parentNode) pane.parentNode.removeChild(pane);
     if(item.builtin){ if(kmlDismissed.indexOf(id)<0) kmlDismissed.push(id);
       localStorage.setItem('kmlDismissed',JSON.stringify(kmlDismissed));
       delete kmlInstalled[id]; localStorage.setItem('kmlBuiltins',JSON.stringify(kmlInstalled)); }
@@ -1602,7 +1607,7 @@ $('#restoreBtn').onclick=async()=>{ kmlDismissed=[]; localStorage.setItem('kmlDi
   toast('Checking for built-in lines…'); await installBuiltins(); renderKmlList(); toast('Built-in lines restored'); };
 /* startup: restore draw order, draw layers left on, then sync the built-in library */
 (async function(){ setOrders(); await installBuiltins();   // reconcile/install first, then draw what remains
-  for(const it of kmls){ if(it.on && !kmlLayers[it.id]) loadKmlGeom(it); } })();
+  for(const it of kmls){ if(it.on && !kmlLayers[it.id]){ await loadKmlGeom(it); await _yield(); } } })();
 
 setTimeout(()=>map.invalidateSize(),200);
 } /* end initApp */
