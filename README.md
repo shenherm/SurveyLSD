@@ -264,37 +264,36 @@ The fleet includes **older iPads**, so the code targets older Safari:
 
 ---
 
-## Future: native iOS app (Capacitor)
+## Native iOS app (Capacitor)
 
-The plan is to ship this as a real native iPad app. The chosen route is **Capacitor**, which
-wraps the existing web app in an Xcode/Swift project that builds to an `.ipa` for
-TestFlight / the App Store. The web code is already built to survive that move:
+This ships as a real native iPad app via **Capacitor**, which wraps the existing web app in
+an Xcode project that builds to an `.ipa` for TestFlight / ad-hoc install. **The app is
+prepared for this now** — see **[NATIVE_BUILD.md](NATIVE_BUILD.md)** for the full
+step-by-step build, plus `capacitor.config.json` and `package.json` in the repo root.
 
-**Already native-ready** — these use storage the web layer reads directly, which works the
-same in Safari and in Capacitor's WKWebView (where the service worker does **not** run):
+Everything the app needs offline uses storage the native WebView reads directly, with **no
+service worker** (which doesn't run in Capacitor):
 
-- **Imagery** is downloaded to **IndexedDB** (`patrolTiles`) and served by a custom Leaflet
-  layer — no service worker involved. Downloads use CORS fetches so the bytes are readable.
+- **Imagery** downloads to **IndexedDB** (`patrolTiles`), served by the custom canvas tile
+  layer (with overzoom). Downloads use CORS fetches so the bytes are readable in the WebView.
 - **Pipelines** import to **IndexedDB** (`patrolKml`); the file picker works from the iOS
-  Files app, and geometry persists across launches.
+  Files app (`accept="*/*"`), and geometry persists across launches.
+- **Elevation** downloads along the corridor to **IndexedDB** (`patrolDem`) — no bundled file
+  or service worker needed.
 - **Pins** persist in **localStorage**.
+- **Survey grids, optional DEM, and built-in lines** are bundled in the app, so LSD lookup and
+  the pipeline overview work offline from first launch. Imagery/elevation need one online
+  session to download, exactly like the PWA.
 
-**Prerequisites when ready:**
+The service worker registration is skipped automatically on the native `capacitor://` scheme,
+and all data paths are relative so they resolve against the bundled assets.
 
-- A **Mac with Xcode** (the iOS build must happen on macOS).
-- An **Apple Developer account** ($99/yr) for on-device install beyond brief dev runs and for
-  TestFlight / App Store distribution.
+**To build you need:** a **Mac with Xcode**, **Node.js** + **CocoaPods**, and — for permanent
+install / fleet distribution — an **Apple Developer account** ($99/yr). Full walkthrough in
+[NATIVE_BUILD.md](NATIVE_BUILD.md).
 
-**Native-only work remaining (small):**
-
-- Wrap with Capacitor, set the app icon/splash, and build in Xcode.
-- *Optional:* let crews drop `.kml` files into the app's folder via the Capacitor Filesystem
-  plugin (in addition to the current file picker).
-- *Optional:* bundle elevation (a small DEM) for offline ground/AGL, since the elevation API
-  is online-only without the service worker.
-
-The tradeoff is distribution and polish (App Store/TestFlight, better background GPS, bundled
-maps) in exchange for a Mac, the yearly fee and Xcode upkeep. The PWA already delivers the
+The tradeoff is distribution and polish (TestFlight, durable storage, no data eviction) in
+exchange for a Mac, the yearly fee and Xcode upkeep. The PWA already delivers the
 core in-flight experience without any of that.
 
 ## Credits

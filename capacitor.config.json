@@ -1,0 +1,13 @@
+{
+  "appId": "com.envirotechaviation.lsdpatrolnav",
+  "appName": "LSD Patrol Nav",
+  "webDir": "www",
+  "server": {
+    "iosScheme": "capacitor"
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#0c0f12",
+    "scrollEnabled": false
+  }
+}
