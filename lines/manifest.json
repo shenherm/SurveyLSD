@@ -1,10 +1,9 @@
 {
   "version": 5,
   "lines": [
-    { "id": "bi-redwater",          "name": "Redwater",                    "file": "redwater.json",                    "v": 1, "on": true },
-    { "id": "bi-rangeland-sundre",  "name": "Rangeland Sundre Gathering",  "file": "rangeland_sundre_gathering.json",  "v": 1, "on": true },
-    { "id": "bi-rangeland-cremona", "name": "Rangeland Gathering Cremona", "file": "rangeland_gathering_cremona.json", "v": 1, "on": true },
-    { "id": "bi-coed-cremona",      "name": "Coed South Cremona",          "file": "coed_south_cremona.json",          "v": 1, "on": true },
-    { "id": "bi-envirotech-all",    "name": "EnviroTech Patrols (all areas)", "file": "envirotech_patrols.json",       "v": 1, "on": false }
+    { "id": "coed_south_cremona",         "v": 1, "file": "coed_south_cremona.json",         "name": "Coed South — Cremona",        "on": true },
+    { "id": "rangeland_gathering_cremona", "v": 1, "file": "rangeland_gathering_cremona.json", "name": "Rangeland Gathering — Cremona", "on": true },
+    { "id": "rangeland_sundre_gathering",  "v": 1, "file": "rangeland_sundre_gathering.json",  "name": "Rangeland Sundre Gathering",   "on": true },
+    { "id": "redwater",                    "v": 1, "file": "redwater.json",                    "name": "Redwater",                     "on": true }
   ]
 }
