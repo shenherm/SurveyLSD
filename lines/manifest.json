@@ -1,9 +1,8 @@
 {
-  "version": 5,
+  "version": 6,
   "lines": [
-    { "id": "coed_south_cremona",         "v": 1, "file": "coed_south_cremona.json",         "name": "Coed South — Cremona",        "on": true },
-    { "id": "rangeland_gathering_cremona", "v": 1, "file": "rangeland_gathering_cremona.json", "name": "Rangeland Gathering — Cremona", "on": true },
-    { "id": "rangeland_sundre_gathering",  "v": 1, "file": "rangeland_sundre_gathering.json",  "name": "Rangeland Sundre Gathering",   "on": true },
-    { "id": "redwater",                    "v": 1, "file": "redwater.json",                    "name": "Redwater",                     "on": true }
+    { "id": "coed_daily",                "v": 1, "file": "coed_daily.json",                "name": "Co-Ed Daily",                "on": true },
+    { "id": "coed_weekly",               "v": 1, "file": "coed_weekly.json",               "name": "Co-Ed Weekly",               "on": true },
+    { "id": "rangeland_ferrier_lateral", "v": 1, "file": "rangeland_ferrier_lateral.json", "name": "Rangeland Ferrier Lateral", "on": true }
   ]
 }

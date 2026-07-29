@@ -1082,7 +1082,7 @@ function parseKml(text){
   const styles={}; let m;
   const sre=/<Style\b[^>]*\bid="([^"]+)"[^>]*>([\s\S]*?)<\/Style>/g;
   while((m=sre.exec(text))){ const body=m[2];
-    const cm=/<color>\s*([0-9a-fA-F]+)\s*<\/color>/.exec(body);
+    const cm=/<LineStyle>[\s\S]*?<color>\s*([0-9a-fA-F]+)/.exec(body)||/<color>\s*([0-9a-fA-F]+)\s*<\/color>/.exec(body);
     const wm=/<width>\s*([\d.]+)\s*<\/width>/.exec(body);
     styles['#'+m[1]]={color:cm?kmlColorToHex(cm[1]):null, width:wm?parseFloat(wm[1]):0}; }
   const smre=/<StyleMap\b[^>]*\bid="([^"]+)"[^>]*>([\s\S]*?)<\/StyleMap>/g;
