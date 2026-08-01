@@ -184,12 +184,13 @@
     <button class="act" id="clearKey" style="background:var(--panel2);color:var(--ink)">Clear</button></div>
 
   <div style="border-top:1px solid var(--line);margin:16px 0 12px"></div>
-  <h2 style="font-size:14px">Download imagery for this area</h2>
-  <div class="hint">Pick what to download, then tap once. Imagery and ground elevation for the same area are saved on the device for offline use — re-download whenever your lines change. Saves the imagery layer that's currently showing.</div>
+  <h2 style="font-size:14px">Download imagery</h2>
+  <div class="hint">Along a pipeline: pick the line, radius and detail, then tap once. Imagery and ground elevation are saved on the device — overlapping lines share tiles (downloaded once), and deleting one line's imagery keeps what other lines still use. Saves the imagery layer that's currently showing.</div>
   <div class="gp-chips" id="dlMode" style="grid-template-columns:1fr 1fr">
-    <button class="gp-chip on" data-mode="corridor"><b>Along pipelines</b><s>buffer the KML lines</s></button>
+    <button class="gp-chip on" data-mode="corridor"><b>Along a pipeline</b><s>buffer one KML line</s></button>
     <button class="gp-chip" data-mode="box"><b>Current view</b><s>the whole rectangle</s></button>
   </div>
+  <div id="dlLine" style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0"></div>
   <div class="gp-chips" id="dlRadius" style="grid-template-columns:repeat(3,1fr)">
     <button class="gp-chip" data-r="2"><b>2 km</b><s>each side</s></button>
     <button class="gp-chip on" data-r="5"><b>5 km</b><s>each side</s></button>
@@ -227,6 +228,8 @@
 .gp-chips{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-bottom:10px}
 .gp-chip{min-height:44px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05}
 .gp-chip.on{border-color:var(--amber);background:var(--panel2)}
+.dlln{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:9px;padding:7px 11px;font-size:13px;font-weight:600;cursor:pointer;min-height:38px}
+.dlln.on{border-color:var(--amber);color:var(--amber);background:var(--panel2)}
 .gp-chip b{color:var(--ink);font-size:16px;font-weight:600;font-family:"SF Mono",ui-monospace,monospace}
 .gp-chip s{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
 .gp-chip.on s{color:var(--amber)}
@@ -280,6 +283,7 @@
 .kw{display:flex;align-items:center;gap:14px}
 .kwv{font-family:"SF Mono",ui-monospace,monospace;font-size:16px;min-width:40px;text-align:center;color:var(--ink)}
 .kacts{display:flex;gap:8px;margin-top:14px}
+.kimgstat{font-size:12px;color:var(--muted);margin:6px 0 2px}
 .ksl{flex:1;min-height:42px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:var(--ink);font-size:13px;font-weight:600;cursor:pointer}
 .ksl.del{color:var(--warn);border-color:#5a3236}
 .kbadge{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--accent);border:1px solid var(--line);border-radius:4px;padding:1px 4px;vertical-align:middle}
@@ -416,6 +420,35 @@ function tileCount(){ return tileDB().then(db=>new Promise(res=>{ const tx=db.tr
   const rq=tx.objectStore('tiles').count(); rq.onsuccess=()=>res(rq.result||0); rq.onerror=()=>res(0); })).catch(()=>0); }
 function tileClear(){ return tileDB().then(db=>new Promise(res=>{ const tx=db.transaction('tiles','readwrite');
   tx.objectStore('tiles').clear(); tx.oncomplete=()=>res(true); tx.onerror=()=>res(false); })).catch(()=>false); }
+function tileDel(key){ return tileDB().then(db=>new Promise(res=>{ const tx=db.transaction('tiles','readwrite');
+  tx.objectStore('tiles').delete(key); tx.oncomplete=()=>res(true); tx.onerror=()=>res(false); })).catch(()=>false); }
+
+/* Per-line imagery index: which tile keys each line's download owns. Tiles are keyed by
+   layer/z/x/y, so overlapping lines naturally share ONE stored tile (downloaded once).
+   Deleting a line removes only the tiles no other line still references. */
+let _imgDB=null;
+function imgDB(){ if(_imgDB) return Promise.resolve(_imgDB);
+  return new Promise((res,rej)=>{ const r=indexedDB.open('patrolImg',1);
+    r.onupgradeneeded=()=>{ const d=r.result; if(!d.objectStoreNames.contains('idx')) d.createObjectStore('idx'); };
+    r.onsuccess=()=>{ _imgDB=r.result; res(_imgDB); }; r.onerror=()=>rej(r.error); }); }
+function imgIdxGet(id){ return imgDB().then(db=>new Promise(res=>{ const rq=db.transaction('idx','readonly').objectStore('idx').get(id);
+  rq.onsuccess=()=>res(rq.result||null); rq.onerror=()=>res(null); })).catch(()=>null); }
+function imgIdxPut(id,rec){ return imgDB().then(db=>new Promise((res,rej)=>{ const tx=db.transaction('idx','readwrite');
+  tx.objectStore('idx').put(rec,id); tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error); })).catch(()=>false); }
+function imgIdxDel(id){ return imgDB().then(db=>new Promise(res=>{ const tx=db.transaction('idx','readwrite');
+  tx.objectStore('idx').delete(id); tx.oncomplete=()=>res(true); tx.onerror=()=>res(false); })).catch(()=>false); }
+function imgIdxAll(){ return imgDB().then(db=>new Promise(res=>{ const st=db.transaction('idx','readonly').objectStore('idx'); const out={};
+  const rq=st.openCursor(); rq.onsuccess=e=>{ const c=e.target.result; if(c){ out[c.key]=c.value; c.continue(); } else res(out); }; rq.onerror=()=>res(out); })).catch(()=>({})); }
+async function deleteLineImagery(lineId){
+  const rec=await imgIdxGet(lineId); if(!rec||!rec.keys||!rec.keys.length){ await imgIdxDel(lineId); return 0; }
+  const all=await imgIdxAll(); const other=new Set();
+  for(const id in all){ if(id===lineId) continue; const r=all[id]; if(r&&r.keys) for(let i=0;i<r.keys.length;i++) other.add(r.keys[i]); }
+  let del=0;
+  for(let i=0;i<rec.keys.length;i++){ const k=rec.keys[i]; if(!other.has(k)){ if(await tileDel(k)) del++; } }
+  await imgIdxDel(lineId);
+  _demStored=_demStored.filter(r=>r.lineId!==lineId); demStorePut(_demStored); rebuildDEM();
+  return del;
+}
 /* Canvas tile with overzoom fallback: exact stored tile -> network (if online)
    -> scaled crop of the best lower-zoom stored ancestor -> transparent. This is
    why zooming past the downloaded level no longer goes black: it upscales the
@@ -676,22 +709,58 @@ document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closeSheets);
 
 /* ---------- GPS: track continuously; button toggles follow / recenter ---------- */
 let watchId=null,gpsMarker=null,gpsCircle=null,following=false,tracking=false,lastFix=null,_gpsErrAt=0;
+let gpsAnchor=null,gpsDisp=null,gpsAcc=0,gpsRaf=0,gpsPrevFix=null,_gpsFrameT=0;
 function startTracking(){
   if(!navigator.geolocation){ toast('No geolocation on this device'); return false; }
   if(watchId!=null) return true;
   watchId=navigator.geolocation.watchPosition(onFix,onGpsErr,{enableHighAccuracy:true,maximumAge:1000,timeout:20000});
   tracking=true; return true;
 }
+const GPS_DR_MAX=2.5, GPS_TAU=0.14;   // seconds: dead-reckon cap, and easing time-constant
+function gpsVel(pos){ const c=pos.coords;
+  if(c.speed!=null&&isFinite(c.speed)&&c.speed>0.7&&c.heading!=null&&isFinite(c.heading)){
+    const h=c.heading*Math.PI/180, vN=c.speed*Math.cos(h), vE=c.speed*Math.sin(h);   // GPS gives true velocity when moving
+    return {vlat:vN/111320, vlon:vE/(111320*Math.cos(c.latitude*Math.PI/180))}; }
+  if(gpsPrevFix){ const dt=(pos.timestamp-gpsPrevFix.t)/1000;
+    if(dt>0.25&&dt<6){ let dlat=(c.latitude-gpsPrevFix.lat)/dt, dlon=(c.longitude-gpsPrevFix.lon)/dt;
+      const sp=Math.hypot(dlat*111320, dlon*111320*Math.cos(c.latitude*Math.PI/180));
+      if(sp>200){ const k=200/sp; dlat*=k; dlon*=k; }        // reject noise spikes (>200 m/s)
+      return {vlat:dlat, vlon:dlon}; } }
+  return {vlat:0, vlon:0}; }
 function onFix(pos){
-  const {latitude,longitude,accuracy,altitude}=pos.coords, ll=[latitude,longitude];
-  lastFix=ll; tracking=true;
+  const {latitude,longitude,accuracy,altitude}=pos.coords;
+  lastFix=[latitude,longitude]; tracking=true;
   gpsAltM=(altitude!=null&&isFinite(altitude))?altitude:null;
   fetchElev(latitude,longitude).then(m=>{ gpsGroundM=m; renderElev(); }); renderElev();
+  const v=gpsVel(pos);
+  gpsAnchor={lat:latitude,lon:longitude,t:performance.now(),vlat:v.vlat,vlon:v.vlon};
+  gpsAcc=accuracy; gpsPrevFix={lat:latitude,lon:longitude,t:pos.timestamp};
   if(!gpsMarker){
-    gpsMarker=L.circleMarker(ll,{radius:7,color:'#04101f',weight:2,fillColor:'#3ddc84',fillOpacity:1}).addTo(map);
-    gpsCircle=L.circle(ll,{radius:accuracy,color:'#3ddc84',weight:1,fillColor:'#3ddc84',fillOpacity:.08}).addTo(map);
-  } else { gpsMarker.setLatLng(ll); gpsCircle.setLatLng(ll).setRadius(accuracy); }
-  if(following) map.panTo(ll,{animate:true,duration:.4});
+    gpsDisp={lat:latitude,lon:longitude};
+    gpsMarker=L.circleMarker([latitude,longitude],{radius:7,color:'#04101f',weight:2,fillColor:'#3ddc84',fillOpacity:1}).addTo(map);
+    gpsCircle=L.circle([latitude,longitude],{radius:accuracy,color:'#3ddc84',weight:1,fillColor:'#3ddc84',fillOpacity:.08}).addTo(map);
+    if(following) map.panTo([latitude,longitude],{animate:true,duration:.4});
+  }
+  if(!gpsDisp) gpsDisp={lat:latitude,lon:longitude};
+  if(!gpsRaf){ _gpsFrameT=0; gpsRaf=requestAnimationFrame(gpsStep); }
+}
+/* Smoothly ease the dot toward the fix dead-reckoned to 'now' by its velocity, every
+   frame — so the marker glides continuously instead of snapping once per GPS update. */
+function gpsStep(){
+  gpsRaf=0;
+  if(!gpsAnchor||!gpsMarker||!gpsDisp) return;
+  const now=performance.now();
+  const fdt=_gpsFrameT?Math.min(0.05,(now-_gpsFrameT)/1000):0.016; _gpsFrameT=now;
+  const drt=Math.min(GPS_DR_MAX,(now-gpsAnchor.t)/1000);
+  const tgtLat=gpsAnchor.lat+gpsAnchor.vlat*drt, tgtLon=gpsAnchor.lon+gpsAnchor.vlon*drt;
+  const a=1-Math.exp(-fdt/GPS_TAU);
+  gpsDisp.lat+=(tgtLat-gpsDisp.lat)*a; gpsDisp.lon+=(tgtLon-gpsDisp.lon)*a;
+  const ll=[gpsDisp.lat,gpsDisp.lon];
+  gpsMarker.setLatLng(ll); if(gpsCircle){ gpsCircle.setLatLng(ll); if(gpsCircle.getRadius()!==gpsAcc) gpsCircle.setRadius(gpsAcc); }
+  if(following) map.panTo(ll,{animate:false});
+  const moving=(Math.abs(gpsAnchor.vlat)+Math.abs(gpsAnchor.vlon))>1e-9;
+  const gap=Math.abs(tgtLat-gpsDisp.lat)+Math.abs(tgtLon-gpsDisp.lon);
+  if(tracking && (moving||gap>2e-7)) gpsRaf=requestAnimationFrame(gpsStep);
 }
 function onGpsErr(err){
   const now=Date.now();
@@ -711,6 +780,18 @@ function fmtFt(m){ return m==null?'—':Math.round(m*M2FT).toLocaleString()+' ft
 function fmtFt10(m){ return m==null?'—':(Math.round(m*M2FT/10)*10).toLocaleString()+' ft'; }
 const elevCache={}, elevPending={};
 function elevKey(la,lo){ return la.toFixed(3)+','+lo.toFixed(3); }   // ~110 m grid
+/* Persist every elevation value we fetch online, so ground/AGL keep working offline for
+   any area used online at least once (patrol routes get flown repeatedly). Complements the
+   corridor DEM download; stored in IndexedDB so it survives reloads and works in native. */
+let _elevDB=null;
+function elevDB(){ if(_elevDB) return Promise.resolve(_elevDB);
+  return new Promise((res,rej)=>{ const r=indexedDB.open('patrolElev',1);
+    r.onupgradeneeded=()=>{ const d=r.result; if(!d.objectStoreNames.contains('pts')) d.createObjectStore('pts'); };
+    r.onsuccess=()=>{ _elevDB=r.result; res(_elevDB); }; r.onerror=()=>rej(r.error); }); }
+function elevCachePut(k,v){ elevDB().then(db=>{ try{ db.transaction('pts','readwrite').objectStore('pts').put(v,k); }catch(e){} }).catch(()=>{}); }
+function elevCacheLoad(){ return elevDB().then(db=>new Promise(res=>{ const out={}; const rq=db.transaction('pts','readonly').objectStore('pts').openCursor();
+  rq.onsuccess=e=>{ const c=e.target.result; if(c){ out[c.key]=c.value; c.continue(); } else res(out); }; rq.onerror=()=>res(out); })).catch(()=>({})); }
+elevCacheLoad().then(m=>{ let n=0; for(const k in m){ if(!(k in elevCache)){ elevCache[k]=m[k]; n++; } } if(n&&typeof renderElev==='function') renderElev(); });
 function openMeteoElev(la,lo){
   return fetch('https://api.open-meteo.com/v1/elevation?latitude='+la.toFixed(4)+'&longitude='+lo.toFixed(4))
     .then(r=>r.ok?r.json():null).then(j=>{ const a=j&&j.elevation; return (a&&a.length&&isFinite(a[0]))?a[0]:null; })
@@ -783,8 +864,8 @@ function rebuildDEM(){ const regions=_demBundled.concat(_demStored);
   DEM=regions.length?{regions:regions}:null;
   if(typeof scheduleElev==='function') scheduleElev();
   if(typeof renderElev==='function') renderElev(); }
-function regionSig(r){ return Math.round(r.lat0*1e4)+'_'+Math.round(r.lon0*1e4)+'_'+r.nRows+'x'+r.nCols; }
-function demStoreUpsert(region){            // replace a same-footprint region, else append
+function regionSig(r){ return r.lineId?('L:'+r.lineId):(Math.round(r.lat0*1e4)+'_'+Math.round(r.lon0*1e4)+'_'+r.nRows+'x'+r.nCols); }
+function demStoreUpsert(region){            // replace the region for the same line (or same footprint), else append
   const sig=regionSig(region);
   _demStored=_demStored.filter(r=>regionSig(r)!==sig); _demStored.push(region);
   rebuildDEM(); return demStorePut(_demStored); }
@@ -806,7 +887,7 @@ function fetchElev(la,lo){
   if(k in elevCache) return Promise.resolve(elevCache[k]);
   if(elevPending[k]) return elevPending[k];
   const p=openMeteoElev(la,lo).then(m=>m!=null?m:esriElev(la,lo)).then(m=>{
-    delete elevPending[k]; if(m!=null) elevCache[k]=m; return m; });   // only cache real values, so it retries after going back online
+    delete elevPending[k]; if(m!=null){ elevCache[k]=m; elevCachePut(k,m); } return m; });   // cache + persist real values, so they survive offline and after reload
   elevPending[k]=p; return p;
 }
 let crossGroundM=null, gpsAltM=null, gpsGroundM=null;
@@ -1171,9 +1252,10 @@ function cullRedraw(L0){
     const pl=L.polyline(g.seg,{renderer:L0.renderer,color:item.color||g.c,weight:item.width||g.w,opacity:.95,smoothFactor:sf,interactive:false});
     pl._baseColor=g.c; pl._baseWidth=g.w; pl.addTo(L0.grp); out.push(pl); }
   L0.linePolys=out; L0.polys=(L0.pointPolys||[]).concat(out);
+  scheduleOrder();
 }
-function scheduleCull(L0){ if(L0._t) clearTimeout(L0._t);
-  L0._t=setTimeout(function(){ L0._t=null; if(map.hasLayer(L0.grp)) cullRedraw(L0); },120); }
+function scheduleCull(L0){ if(L0._t) return;   // throttle (not debounce): must still fire during continuous follow-mode panning
+  L0._t=setTimeout(function(){ L0._t=null; if(map.hasLayer(L0.grp)) cullRedraw(L0); },150); }
 function disposeLayer(id){ delete kmlLoading[id]; const L0=kmlLayers[id]; if(!L0) return;
   if(L0.onMove) map.off('moveend zoomend', L0.onMove);
   if(L0._t){ clearTimeout(L0._t); L0._t=null; }
@@ -1208,14 +1290,25 @@ function buildLayer(item,geom){
     L0.polys=L0.pointPolys.concat(L0.linePolys);
   }
   L0.bounds=bounds.isValid()?bounds:null;
-  if(item.on) grp.addTo(map);
+  if(item.on){ grp.addTo(map); scheduleOrder(); }
 }
 function applyStyle(item){ const L0=kmlLayers[item.id]; if(!L0) return;
   for(let i=0;i<L0.polys.length;i++){ const pl=L0.polys[i];
     if(pl._isPoint) pl.setStyle({fillColor:item.color||pl._baseColor});
     else pl.setStyle({color:item.color||pl._baseColor, weight:item.width||pl._baseWidth||3}); } }
-function applyOrder(item){ /* shared canvas: paint order = draw order; no per-layer pane z-index */ }
-function setOrders(){ for(let i=0;i<kmls.length;i++){ kmls[i].order=kmls.length-1-i; applyOrder(kmls[i]); } }
+function applyOrder(item){ scheduleOrder(); }
+let _orderRaf=0;
+function scheduleOrder(){ if(_orderRaf) return; _orderRaf=requestAnimationFrame(function(){ _orderRaf=0; applyDrawOrder(); }); }
+/* One shared canvas draws all lines, so paint order = the order polylines sit in the
+   renderer. Enforce the Lines-menu order: draw bottom-of-list first so the top of the
+   list ends up frontmost. Called after every build/cull/reorder. */
+function applyDrawOrder(){
+  for(let i=kmls.length-1;i>=0;i--){ const L0=kmlLayers[kmls[i].id]; if(!L0||!map.hasLayer(L0.grp)) continue;
+    const lp=L0.linePolys||[]; for(let j=0;j<lp.length;j++){ try{ lp[j].bringToFront(); }catch(e){} }
+    const pp=L0.pointPolys||[]; for(let j=0;j<pp.length;j++){ try{ pp[j].bringToFront(); }catch(e){} }
+  }
+}
+function setOrders(){ for(let i=0;i<kmls.length;i++) kmls[i].order=kmls.length-1-i; scheduleOrder(); }
 function moveKml(id,dir){ const i=kmls.findIndex(k=>k.id===id); const j=i+dir;
   if(i<0||j<0||j>=kmls.length) return; const t=kmls[i]; kmls[i]=kmls[j]; kmls[j]=t;
   setOrders(); saveKmls(); renderKmlList(); }
@@ -1317,11 +1410,17 @@ function renderKmlList(){
       h+='<button class="kpc orig'+(!k.color?' sel':'')+'" data-act="color" data-c="">orig</button>';
       for(let c=0;c<PALETTE.length;c++) h+='<button class="kpc'+(k.color===PALETTE[c]?' sel':'')+'" data-act="color" data-c="'+PALETTE[c]+'" style="background:'+PALETTE[c]+'"></button>';
       h+='</div><div class="kclbl">Thickness</div><div class="kw"><button class="kbtn" data-act="wminus">−</button><span class="kwv">'+(k.width||'orig')+'</span><button class="kbtn" data-act="wplus">+</button></div>';
+      h+='<div class="kclbl">Imagery</div><div class="kimgstat" id="kimg_'+k.id+'">Checking…</div>';
+      h+='<div class="kacts"><button class="ksl" data-act="dlimg">Download imagery…</button><button class="ksl del" data-act="delimg">Delete imagery</button></div>';
       h+='<div class="kacts"><button class="ksl" data-act="zoom">Zoom to</button><button class="ksl" data-act="replace">Replace…</button><button class="ksl del" data-act="del">'+(k.builtin?'Remove':'Delete')+'</button></div></div>';
     }
     h+='</div>';
   }
   box.innerHTML=h;
+  if(kmlExpanded && typeof imgIdxGet==='function'){ const eid=kmlExpanded;
+    imgIdxGet(eid).then(rec=>{ const e2=document.getElementById('kimg_'+eid); if(!e2) return;
+      if(rec&&rec.keys&&rec.keys.length) e2.textContent=rec.keys.length.toLocaleString()+' tiles saved'+(rec.radius?(' · '+rec.radius+' km each side'):'');
+      else e2.textContent='None downloaded yet'; }); }
 }
 $('#kmlList').addEventListener('click',e=>{
   const btn=e.target.closest('[data-act]'); const row=e.target.closest('.krow');
@@ -1342,6 +1441,12 @@ $('#kmlList').addEventListener('click',e=>{
   if(act==='zoom'){ const go=()=>{ const l=kmlLayers[id]; if(l&&l.bounds){ map.fitBounds(l.bounds.pad(.1)); closeSheets(); } else toast('No geometry to zoom to'); };
     if(kmlLayers[id]) go(); else loadKmlGeom(item).then(go); return; }
   if(act==='replace'){ replaceTargetId=id; $('#replaceIn').click(); return; }
+  if(act==='dlimg'){ dlTargetLine=id; $('#inKey').value=esriKey; openSheet('sheetKey');
+    document.querySelectorAll('#dlMode .gp-chip').forEach(x=>x.classList.toggle('on',x.getAttribute('data-mode')==='corridor'));
+    dlRefresh(); dlStoredRefresh(); return; }
+  if(act==='delimg'){ if(!confirm('Delete downloaded imagery for "'+item.name+'"? Tiles shared with other lines are kept.')) return;
+    btn.textContent='Deleting…';
+    deleteLineImagery(id).then(n=>{ toast(n?('Deleted '+n.toLocaleString()+' tiles — '+item.name):('No imagery to delete for '+item.name)); renderKmlList(); if(typeof dlStoredRefresh==='function') dlStoredRefresh(); }); return; }
   if(act==='del'){ disposeLayer(id);
     if(item.builtin){ if(kmlDismissed.indexOf(id)<0) kmlDismissed.push(id);
       localStorage.setItem('kmlDismissed',JSON.stringify(kmlDismissed));
@@ -1409,7 +1514,10 @@ function stampDisk(set,cx,cy,rT,z){ const m=Math.pow(2,z)-1, r2=rT*rT;
     for(let xx=x0;xx<=x1;xx++) set.add(xx*DL_KEYMUL+yy); } }
 function dlModeSel(){ const c=document.querySelector('#dlMode .gp-chip.on'); return c?c.getAttribute('data-mode'):'corridor'; }
 function dlRadiusSel(){ const c=document.querySelector('#dlRadius .gp-chip.on'); return c?parseFloat(c.getAttribute('data-r')):5; }
-function dlOnLines(){ return (typeof kmls!=='undefined'?kmls:[]).filter(k=>k.on); }
+let dlTargetLine=null;   // when set, download/estimate operate on this one line
+function dlOnLines(){ const all=(typeof kmls!=='undefined'?kmls:[]);
+  if(dlTargetLine){ const it=all.find(k=>k.id===dlTargetLine); return it?[it]:[]; }
+  return all.filter(k=>k.on); }
 let _corr=null;   // cache {key, byZoom:{z:Set}|null, total}
 const YIELD_EVERY=LOWPWR?8000:40000;
 function _yield(){ return new Promise(function(r){ setTimeout(r,0); }); }
@@ -1535,6 +1643,7 @@ let _dlSeq=0;
 async function dlRefresh(){
   const mode=dlModeSel();
   $('#dlRadius').style.display=(mode==='corridor')?'':'none';
+  renderDlLineChips();
   const est=$('#dlEst'), btn=$('#dlStart'), seq=++_dlSeq;
   if(mode==='corridor'&&!dlOnLines().length){
     est.textContent='Import pipelines first (Lines), then they can be buffered for download.';
@@ -1616,9 +1725,18 @@ async function dlRun(){
         function(d,t){ const pct=t?Math.round(d/t*100):100; bar.style.width=pct+'%';
           ptxt.textContent='Ground elevation '+d.toLocaleString()+' / '+t.toLocaleString()+' ('+pct+'%)'; },
         function(){ return dlCancel; });
-      if(res&&res.region){ await demStoreUpsert(res.region); elevSaved=res.count; }
+      if(res&&res.region){ if(mode==='corridor'&&dlTargetLine) res.region.lineId=dlTargetLine; await demStoreUpsert(res.region); elevSaved=res.count; }
       else if(res&&res.tooBig) elevTooBig=true;
     }catch(e){ elevErr=true; }
+  }
+
+  // ---- record who owns this corridor's tiles, so deleting one line keeps tiles shared by others ----
+  const ownerId=(mode==='corridor'&&dlTargetLine)?dlTargetLine:(mode==='box'?'__box__':null);
+  if(ownerId){
+    const keys=tiles.map(function(t){ return layerId+'/'+t.z+'/'+t.x+'/'+t.y; });
+    if(ownerId==='__box__'){ const ex=await imgIdxGet('__box__'), set={}; if(ex&&ex.keys) for(let i=0;i<ex.keys.length;i++) set[ex.keys[i]]=1;
+      for(let i=0;i<keys.length;i++) set[keys[i]]=1; await imgIdxPut('__box__',{layerId:layerId,keys:Object.keys(set),ts:Date.now()}); }
+    else await imgIdxPut(ownerId,{layerId:layerId,keys:keys,radius:dlRadiusSel(),zHi:r.zHi,ts:Date.now()});
   }
 
   dlBusy=false;
@@ -1637,11 +1755,25 @@ async function dlRun(){
 function dlChip(group){ $('#'+group).addEventListener('click',e=>{ const c=e.target.closest('.gp-chip'); if(!c) return;
   document.querySelectorAll('#'+group+' .gp-chip').forEach(x=>x.classList.remove('on')); c.classList.add('on'); dlRefresh(); }); }
 dlChip('dlZoom'); dlChip('dlMode'); dlChip('dlRadius');
+function renderDlLineChips(){
+  const box=$('#dlLine'); if(!box) return;
+  if(dlModeSel()!=='corridor'){ box.style.display='none'; return; }
+  box.style.display='flex';
+  const lines=(typeof kmls!=='undefined'?kmls:[]);
+  if(!lines.length){ box.innerHTML='<div class="hint" style="margin:0">Import or enable a pipeline line first.</div>'; return; }
+  if(!dlTargetLine||!lines.find(k=>k.id===dlTargetLine)) dlTargetLine=lines[0].id;
+  let h=''; for(let i=0;i<lines.length;i++){ const k=lines[i];
+    h+='<button class="dlln'+(k.id===dlTargetLine?' on':'')+'" data-id="'+k.id+'">'+escapeHtml(k.name)+'</button>'; }
+  box.innerHTML=h;
+}
+$('#dlLine').addEventListener('click',e=>{ const b=e.target.closest('.dlln'); if(!b) return;
+  dlTargetLine=b.getAttribute('data-id'); _corr=null; renderDlLineChips(); dlRefresh(); });
 $('#dlStart').onclick=dlRun;
 $('#dlCancel').onclick=()=>{ dlCancel=true; };
 $('#dlClear').onclick=async()=>{
   await tileClear();
   try{ await demStoreClear(); _demStored=[]; rebuildDEM(); }catch(e){}
+  try{ const all=await imgIdxAll(); for(const id in all) await imgIdxDel(id); }catch(e){}   // drop per-line ownership records too
   try{ const ks=await caches.keys(); for(const k of ks){ if(k.indexOf('surveylsd-tiles-')===0) await caches.delete(k); } }catch(e){}
   toast('Saved imagery & elevation cleared'); dlStoredRefresh();
 };
