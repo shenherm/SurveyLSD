@@ -1,8 +1,9 @@
 {
-  "version": 6,
+  "version": 7,
   "lines": [
     { "id": "coed_daily",                "v": 1, "file": "coed_daily.json",                "name": "Co-Ed Daily",                "on": true },
     { "id": "coed_weekly",               "v": 1, "file": "coed_weekly.json",               "name": "Co-Ed Weekly",               "on": true },
-    { "id": "rangeland_ferrier_lateral", "v": 1, "file": "rangeland_ferrier_lateral.json", "name": "Rangeland Ferrier Lateral", "on": true }
+    { "id": "rangeland_ferrier_lateral", "v": 1, "file": "rangeland_ferrier_lateral.json", "name": "Rangeland Ferrier Lateral", "on": true },
+    { "id": "appl_daily",                "v": 1, "file": "appl_daily.json",                "name": "APPL Daily",                 "on": true }
   ]
 }
