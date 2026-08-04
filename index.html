@@ -288,14 +288,15 @@
 .ksl.del{color:var(--warn);border-color:#5a3236}
 .kbadge{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--accent);border:1px solid var(--line);border-radius:4px;padding:1px 4px;vertical-align:middle}
 .act.ghost{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
+/* Keep file inputs in the render tree and clickable (NOT display:none / visibility:hidden),
+   just off-screen — this is what makes the native picker open on iOS 14.x and 26.x. */
+.vhfile{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0;opacity:0}
 </style>
 <div class="sheet" id="sheetKml">
   <button class="close" data-close>&times;</button>
   <h2>Pipeline lines (KML)</h2>
   <div class="row">
     <button class="act" id="importBtn">Import KML / KMZ</button>
-    <input type="file" id="fileIn" accept="*/*" style="display:none">
-    <input type="file" id="replaceIn" accept="*/*" style="display:none">
   </div>
   <div class="hint">Tap the toggle to show/hide a file. Tap its name to open <b>colour</b>, <b>thickness</b> and draw-order controls — and use ▲ ▼ to lift one line above another where pipelines overlap. Built-in lines load automatically; imported files and all edits are stored on this device. Imported lines are thinned to a 10&nbsp;cm tolerance (well below GPS accuracy) for fast drawing, keeping every bend.</div>
   <div id="kmlList"><div class="empty">No KML imported yet.</div></div>
@@ -313,6 +314,10 @@
   </div>
 </div>
 
+<!-- File inputs live at top level (not inside a sheet) and are visually hidden rather than
+     display:none, so the native picker opens reliably across iOS versions (14.x and 26.x). -->
+<input type="file" id="fileIn" accept="*/*" class="vhfile">
+<input type="file" id="replaceIn" accept="*/*" class="vhfile">
 <div id="toast"></div>
 <div id="boot"><div class="bootcard"><img src="envirotech-logo.png" alt="EnviroTech Aviation Inc."></div><div class="boottitle">LSD Patrol Nav</div><div class="bar"></div><div>Loading map…</div></div>
 
