@@ -1,13 +1,6 @@
 {
-  "version": 8,
+  "version": 9,
   "lines": [
-    {
-      "id": "appl_daily",
-      "v": 1,
-      "file": "appl_daily.json",
-      "name": "APPL Daily",
-      "on": false
-    },
     {
       "id": "altagas_harmattan_to_carstairs_didsbury",
       "v": 1,
