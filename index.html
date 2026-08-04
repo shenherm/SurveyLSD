@@ -213,6 +213,7 @@
     <button class="act amber" id="dlStart">Download area</button>
     <button class="act" id="dlCancel" style="background:var(--panel2);color:var(--ink);display:none">Cancel</button>
   </div>
+  <div class="row" id="dlAllRow"><button class="act" id="dlAll" style="background:var(--panel2);color:var(--ink)">Download ALL lines — imagery + elevation</button></div>
   <div class="hint" id="dlStored" style="margin:6px 0 8px"></div>
   <div class="row"><button class="act" id="dlClear" style="background:var(--panel2);color:var(--ink)">Clear saved imagery</button></div>
 </div>
@@ -1648,6 +1649,8 @@ let _dlSeq=0;
 async function dlRefresh(){
   const mode=dlModeSel();
   $('#dlRadius').style.display=(mode==='corridor')?'':'none';
+  if(!dlBusy){ const anyLines=(typeof kmls!=='undefined'?kmls:[]).length>0;
+    $('#dlAllRow').style.display=(mode==='corridor'&&anyLines)?'':'none'; }
   renderDlLineChips();
   const est=$('#dlEst'), btn=$('#dlStart'), seq=++_dlSeq;
   if(mode==='corridor'&&!dlOnLines().length){
@@ -1757,6 +1760,72 @@ async function dlRun(){
   dlRefresh(); dlStoredRefresh();
 }
 
+function dlAllRestore(){ dlBusy=false; $('#dlCancel').style.display='none'; $('#dlStart').style.display='';
+  $('#dlAllRow').style.display=(dlModeSel()==='corridor'?'':'none'); }
+/* Download imagery + ground elevation for EVERY line. Overlapping corridors share tiles, so
+   we fetch the de-duplicated union once; ownership + elevation are still recorded per line so
+   per-line delete stays overlap-safe. Cancel anytime and keep what's saved. */
+async function dlRunAll(){
+  if(dlBusy) return;
+  const lines=(typeof kmls!=='undefined'?kmls:[]).slice();
+  if(!lines.length){ toast('No pipeline lines to download'); return; }
+  const r=dlZHi(), rad=dlRadiusSel();
+  const layerId=r.lyr.options.layerId, tmpl=r.lyr._url, subs=r.lyr.options.subdomains;
+  dlBusy=true; dlCancel=false; dlQuota=false;
+  $('#dlStart').style.display='none'; $('#dlAllRow').style.display='none'; $('#dlCancel').style.display='';
+  $('#dlProgWrap').style.display='block';
+  const bar=$('#dlBar'), ptxt=$('#dlProgTxt'); bar.style.width='0%'; ptxt.textContent='Planning all lines…';
+  const savedTarget=dlTargetLine;
+  const perLine=[]; const uniq=new Map();
+  for(const ln of lines){
+    if(dlCancel) break;
+    dlTargetLine=ln.id;
+    await corridorTiles(rad,r.zLo,r.zHi); const t=corridorList();
+    const keys=new Array(t.length);
+    for(let i=0;i<t.length;i++){ const tt=t[i], k=layerId+'/'+tt.z+'/'+tt.x+'/'+tt.y; keys[i]=k; if(!uniq.has(k)) uniq.set(k,tt); }
+    perLine.push({id:ln.id, keys:keys});
+    ptxt.textContent='Planning… '+perLine.length+' / '+lines.length+' lines';
+  }
+  const list=Array.from(uniq.values()), total=list.length;
+  function bail(msg){ dlTargetLine=savedTarget; dlAllRestore(); $('#dlProgWrap').style.display='none'; if(msg) toast(msg); }
+  if(dlCancel){ bail('Stopped'); return; }
+  if(!total){ bail('Nothing to download'); return; }
+  if(total>DL_TILE_CAP){ bail('That\'s an enormous area — reduce radius or detail'); return; }
+  const free=await freeBytes();
+  if(free!=null && total*DL_AVG_KB*1024 > free-DL_STORE_MARGIN){
+    bail('Not enough free space for all lines — ~'+fmtMB(free/1024)+' free, need ~'+fmtMB(total*DL_AVG_KB)); return; }
+  if(!confirm('Download imagery + elevation for all '+lines.length+' lines?\n\n~'+total.toLocaleString()+' map tiles (~'+fmtMB(total*DL_AVG_KB)+') plus ground elevation.\n\nThis can take a while. You can Cancel anytime and keep whatever has saved.')){
+    bail(null); return; }
+  try{ if(navigator.storage&&navigator.storage.persist) await navigator.storage.persist(); }catch(e){}
+  let done=0,saved=0,failed=0,idx=0,_lp=0;
+  function prog(f){ const now=Date.now(); if(!f&&now-_lp<250) return; _lp=now;
+    const pct=total?Math.round(done/total*100):100; bar.style.width=pct+'%';
+    ptxt.textContent='Imagery '+done.toLocaleString()+' / '+total.toLocaleString()+' ('+pct+'%) · '+saved.toLocaleString()+' saved'+(failed?(' · '+failed+' failed'):''); }
+  prog(true);
+  async function worker(){ while(idx<list.length){ if(dlCancel) return;
+    const t=list[idx++], key=layerId+'/'+t.z+'/'+t.x+'/'+t.y, url=dlTileUrl(tmpl,subs,t);
+    try{ if(await tileHas(key)) saved++; else{ const resp=await fetch(url); if(resp.ok){ await tilePut(key,await resp.blob()); saved++; } else failed++; } }
+    catch(e){ if(e&&(e.name==='QuotaExceededError'||e.code===22||(e.message&&/quota/i.test(e.message)))){ dlQuota=true; dlCancel=true; return; } failed++; }
+    done++; prog(done===total); } }
+  const CONC=LOWPWR?4:8, ws=[]; for(let i=0;i<CONC;i++) ws.push(worker()); await Promise.all(ws); prog(true);
+  for(const pl of perLine){ try{ await imgIdxPut(pl.id,{layerId:layerId,keys:pl.keys,radius:rad,zHi:r.zHi,ts:Date.now()}); }catch(e){} }
+  let elev=0, ei=0;
+  if(!dlQuota){
+    for(const ln of lines){ if(dlCancel) break; ei++;
+      dlTargetLine=ln.id; bar.style.width='0%'; ptxt.textContent='Ground elevation — line '+ei+' / '+lines.length;
+      try{ const res=await buildElevRegion('corridor',rad,
+        function(d,t){ const pct=t?Math.round(d/t*100):100; bar.style.width=pct+'%'; },
+        function(){ return dlCancel; });
+        if(res&&res.region){ res.region.lineId=ln.id; await demStoreUpsert(res.region); elev+=res.count; } }catch(e){}
+    }
+  }
+  dlTargetLine=savedTarget; dlAllRestore();
+  if(dlQuota) toast('Device storage full — saved '+saved.toLocaleString()+' tiles; free space or clear saved imagery');
+  else if(dlCancel) toast('Stopped — '+saved.toLocaleString()+' tiles'+(elev?(' · '+elev.toLocaleString()+' elevation pts'):'')+' saved');
+  else toast('All lines saved offline — '+saved.toLocaleString()+' tiles'+(failed?(', '+failed+' failed'):'')+(elev?(' · '+elev.toLocaleString()+' elevation pts'):''));
+  setTimeout(()=>{ $('#dlProgWrap').style.display='none'; }, (dlCancel||dlQuota)?900:1500);
+  dlRefresh(); dlStoredRefresh();
+}
 function dlChip(group){ $('#'+group).addEventListener('click',e=>{ const c=e.target.closest('.gp-chip'); if(!c) return;
   document.querySelectorAll('#'+group+' .gp-chip').forEach(x=>x.classList.remove('on')); c.classList.add('on'); dlRefresh(); }); }
 dlChip('dlZoom'); dlChip('dlMode'); dlChip('dlRadius');
@@ -1774,6 +1843,7 @@ function renderDlLineChips(){
 $('#dlLine').addEventListener('click',e=>{ const b=e.target.closest('.dlln'); if(!b) return;
   dlTargetLine=b.getAttribute('data-id'); _corr=null; renderDlLineChips(); dlRefresh(); });
 $('#dlStart').onclick=dlRun;
+$('#dlAll').onclick=dlRunAll;
 $('#dlCancel').onclick=()=>{ dlCancel=true; };
 $('#dlClear').onclick=async()=>{
   await tileClear();
