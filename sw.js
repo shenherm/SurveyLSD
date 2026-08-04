@@ -4,7 +4,7 @@
    the app), not here, so they work in both the PWA and the native iPad app.
    This worker only makes the PWA's app SHELL available offline + caches elevation.
    Bump SHELL_VER when the shell, libraries or icons change. */
-var SHELL_VER = 'v4';
+var SHELL_VER = 'v5';
 var DATA_VER  = 'v1';
 var SHELL = 'surveylsd-shell-' + SHELL_VER;   // app shell + survey grids (cache-first)
 var DATA  = 'surveylsd-data-'  + DATA_VER;    // elevation lookups (network-first, cache fallback)
@@ -93,6 +93,10 @@ self.addEventListener('fetch', function(event){
   if (isElevHost(url)) { event.respondWith(networkFirst(req, DATA)); return; }
 
   if (url.origin === self.location.origin){
+    // Built-in lines (manifest + geometry): network-first so new/updated built-ins appear
+    // when online, with the cached copy as offline fallback. (Cache-first here is what made
+    // a new manifest invisible.)
+    if (url.pathname.indexOf('/lines/') !== -1) { event.respondWith(networkFirst(req, SHELL)); return; }
     var isDoc = req.mode === 'navigate'
              || url.pathname.charAt(url.pathname.length - 1) === '/'
              || url.pathname.indexOf('.html') !== -1;
