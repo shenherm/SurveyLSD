@@ -367,7 +367,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09d';
+var swReg=null, APP_VERSION='2026.08.09e';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -766,14 +766,35 @@ function saveSettings(){ try{ localStorage.setItem('settings',JSON.stringify(set
 
 /* Orange top-down high-wing (Cessna-style) aircraft, nose pointing up (north) at 0°. */
 const PLANE_SVG='<svg viewBox="0 0 24 24" width="40" height="40"><polygon fill="#ff7a1a" stroke="#241200" stroke-width="0.7" stroke-linejoin="round" points="12,2 13,5.5 13,9 22,11 22,12.3 13,11.5 12.8,18 16.5,19.8 16.5,20.9 12.5,20 12,22 11.5,20 7.5,20.9 7.5,19.8 11.2,18 11,11.5 2,12.3 2,11 11,9 11,5.5"/></svg>';
-let gpsPlaneEl=null, gpsVec=null, gpsRings=[], gpsRingLabels=[], gpsTrack=0;
-const TRACK_SECONDS=60, RING_NM=[0.5,1,2];
+let gpsPlaneEl=null, gpsVec=null, gpsRings=[], gpsRingLabels=[], gpsTrack=0, gpsTurnRate=0, _trkPrev=null, _trkPrevT=0;
+const TRACK_SECONDS=20, RING_NM=[0.5,1,2];
 
 function gpsSpeedMS(){ if(!gpsAnchor||!gpsDisp) return 0;
   return Math.hypot(gpsAnchor.vlat*111320, gpsAnchor.vlon*111320*Math.cos(gpsDisp.lat*Math.PI/180)); }
 function updateTrack(){ if(!gpsAnchor||!gpsDisp) return;
   if(gpsSpeedMS()>1.5){   // only update heading when actually moving, else keep last (no spinning when parked)
     gpsTrack=(Math.atan2(gpsAnchor.vlon*Math.cos(gpsDisp.lat*Math.PI/180), gpsAnchor.vlat)*180/Math.PI+360)%360; } }
+/* Estimate turn rate (rad/s) from how fast the track changes between fixes — smoothed and
+   capped — so the predicted vector can curve through a turn like ForeFlight's. */
+function updateTurnRate(t){
+  if(gpsSpeedMS()<2.5){ gpsTurnRate*=0.6; _trkPrev=null; return; }   // ignore heading noise when slow
+  if(_trkPrev!=null){ const dt=(t-_trkPrevT)/1000;
+    if(dt>0.15&&dt<5){ let d=gpsTrack-_trkPrev; while(d>180)d-=360; while(d<-180)d+=360;
+      let rate=(d*Math.PI/180)/dt; if(rate>0.35)rate=0.35; else if(rate<-0.35)rate=-0.35;   // cap ~20°/s
+      gpsTurnRate=gpsTurnRate*0.6+rate*0.4; } }
+  _trkPrev=gpsTrack; _trkPrevT=t;
+}
+/* Predicted path over TRACK_SECONDS at current speed, curving with the current turn rate
+   (constant speed + constant turn rate traces a circular arc). */
+function trackVectorPoints(){
+  const v=gpsSpeedMS(); if(v<1.5||!gpsDisp) return null;
+  const steps=16, dt=TRACK_SECONDS/steps, latR=Math.cos(gpsDisp.lat*Math.PI/180);
+  let lat=gpsDisp.lat, lon=gpsDisp.lon, hdg=gpsTrack*Math.PI/180;
+  const pts=[[lat,lon]];
+  for(let i=0;i<steps;i++){ hdg+=gpsTurnRate*dt;
+    lat+=(v*dt*Math.cos(hdg))/111320; lon+=(v*dt*Math.sin(hdg))/(111320*latR); pts.push([lat,lon]); }
+  return pts;
+}
 
 /* (re)create the ownship marker + accuracy circle + track vector + range rings per settings */
 function buildGpsDisplay(){
@@ -793,15 +814,15 @@ function buildGpsDisplay(){
   gpsRings.forEach(c=>map.removeLayer(c)); gpsRings=[];
   gpsRingLabels.forEach(m=>map.removeLayer(m)); gpsRingLabels=[];
   if(settings.rangeRings){ for(const nm of RING_NM){
-    gpsRings.push(L.circle(ll,{radius:nm*1852,color:'#fff',weight:1,opacity:.55,fill:false,dashArray:'5 6',interactive:false}).addTo(map));
+    gpsRings.push(L.circle(ll,{radius:nm*1852,color:'#fff',weight:1.5,opacity:1,fill:false,interactive:false}).addTo(map));
     gpsRingLabels.push(L.marker(ll,{icon:L.divIcon({className:'ringLbl',html:nm+' NM',iconSize:[42,16],iconAnchor:[21,8]}),interactive:false,keyboard:false}).addTo(map)); } }
-  updateGpsGraphics();
+  updateGpsGraphics(); updateCrossVis();
 }
 /* move the vector + rings + labels to follow the smoothed position (called each frame) */
 function updateGpsGraphics(){
   if(!gpsDisp) return; const ll=[gpsDisp.lat,gpsDisp.lon];
-  if(gpsVec){ const sp=gpsSpeedMS();
-    if(sp>1.5&&gpsAnchor){ gpsVec.setLatLngs([ll,[gpsDisp.lat+gpsAnchor.vlat*TRACK_SECONDS, gpsDisp.lon+gpsAnchor.vlon*TRACK_SECONDS]]); if(gpsVec.options.opacity!==0.9) gpsVec.setStyle({opacity:.9}); }
+  if(gpsVec){ const pts=trackVectorPoints();
+    if(pts){ gpsVec.setLatLngs(pts); if(gpsVec.options.opacity!==0.9) gpsVec.setStyle({opacity:.9}); }
     else if(gpsVec.options.opacity!==0){ gpsVec.setStyle({opacity:0}); } }
   for(let i=0;i<gpsRings.length;i++){ gpsRings[i].setLatLng(ll);
     gpsRingLabels[i].setLatLng([gpsDisp.lat+(RING_NM[i]*1852)/111320, gpsDisp.lon]); }
@@ -826,7 +847,7 @@ function onFix(pos){
   gpsAnchor={lat:latitude,lon:longitude,t:performance.now(),vlat:v.vlat,vlon:v.vlon};
   gpsAcc=accuracy; gpsPrevFix={lat:latitude,lon:longitude,t:pos.timestamp};
   if(!gpsDisp) gpsDisp={lat:latitude,lon:longitude};
-  updateTrack();
+  updateTrack(); updateTurnRate(performance.now());
   if(!gpsMarker){ buildGpsDisplay(); if(following) map.panTo([latitude,longitude],{animate:true,duration:.4}); }
   if(!gpsRaf){ _gpsFrameT=0; gpsRaf=requestAnimationFrame(gpsStep); }
 }
@@ -859,7 +880,8 @@ function onGpsErr(err){
     if(now-_gpsErrAt>10000){ _gpsErrAt=now; toast('Location permission denied — enable it for this site'); } return; }
   if(!gpsMarker && now-_gpsErrAt>10000){ _gpsErrAt=now; toast('Waiting for GPS'+(location.protocol!=='https:'?' (needs HTTPS)':'')); }
 }
-function setFollow(on){ following=on; $('#bGps').classList.toggle('on',on);
+function updateCrossVis(){ const c=$('#cross'); if(c) c.style.display=(following&&gpsMarker)?'none':''; }
+function setFollow(on){ following=on; $('#bGps').classList.toggle('on',on); updateCrossVis();
   if(on && startTracking() && lastFix) map.panTo(lastFix,{animate:true,duration:.4}); }
 $('#bGps').onclick=()=>{ if(!tracking){ if(startTracking()) setFollow(true); } else setFollow(!following); };
 map.on('dragstart',()=>{ if(following) setFollow(false); });   // manual pan stops recentring, GPS keeps tracking
