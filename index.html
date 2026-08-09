@@ -367,7 +367,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09c';
+var swReg=null, APP_VERSION='2026.08.09d';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -767,7 +767,7 @@ function saveSettings(){ try{ localStorage.setItem('settings',JSON.stringify(set
 /* Orange top-down high-wing (Cessna-style) aircraft, nose pointing up (north) at 0°. */
 const PLANE_SVG='<svg viewBox="0 0 24 24" width="40" height="40"><polygon fill="#ff7a1a" stroke="#241200" stroke-width="0.7" stroke-linejoin="round" points="12,2 13,5.5 13,9 22,11 22,12.3 13,11.5 12.8,18 16.5,19.8 16.5,20.9 12.5,20 12,22 11.5,20 7.5,20.9 7.5,19.8 11.2,18 11,11.5 2,12.3 2,11 11,9 11,5.5"/></svg>';
 let gpsPlaneEl=null, gpsVec=null, gpsRings=[], gpsRingLabels=[], gpsTrack=0;
-const TRACK_SECONDS=60, RING_NM=[1,2,3];
+const TRACK_SECONDS=60, RING_NM=[0.5,1,2];
 
 function gpsSpeedMS(){ if(!gpsAnchor||!gpsDisp) return 0;
   return Math.hypot(gpsAnchor.vlat*111320, gpsAnchor.vlon*111320*Math.cos(gpsDisp.lat*Math.PI/180)); }
