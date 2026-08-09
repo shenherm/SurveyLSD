@@ -1864,6 +1864,27 @@ $('#restoreBtn').onclick=async()=>{ kmlDismissed=[]; localStorage.setItem('kmlDi
   for(const it of kmls){ if(it.on && !kmlLayers[it.id]){ await loadKmlGeom(it); await _yield(); } } })();
 
 setTimeout(()=>map.invalidateSize(),200);
+
+/* When iOS backgrounds the WebView and later restores it (app-switcher resume), Leaflet's
+   cached map size and pixel origin can go stale — which paints a black strip where no tiles
+   were laid out and projects every lat/lng (incl. the GPS dot) to a shifted screen position.
+   Re-validate the size on resume/resize and re-place the GPS marker so both self-correct. */
+function resyncMap(){
+  if(!map) return;
+  try{ map.invalidateSize(false); }catch(e){}
+  if(gpsDisp){ const ll=[gpsDisp.lat,gpsDisp.lon];
+    if(gpsMarker) gpsMarker.setLatLng(ll);
+    if(gpsCircle) gpsCircle.setLatLng(ll);
+    if(following) map.panTo(ll,{animate:false});
+  }
+}
+function resyncSoon(){ resyncMap(); setTimeout(resyncMap,250); }   // iOS finalises the viewport a tick after resume
+document.addEventListener('visibilitychange',function(){ if(!document.hidden) resyncSoon(); });
+window.addEventListener('pageshow',resyncSoon);
+window.addEventListener('focus',function(){ setTimeout(resyncMap,60); });
+window.addEventListener('orientationchange',function(){ setTimeout(resyncMap,250); });
+let _rszT=0;
+window.addEventListener('resize',function(){ if(_rszT) return; _rszT=setTimeout(function(){ _rszT=0; resyncMap(); },120); });
 } /* end initApp */
 </script>
 </body>
