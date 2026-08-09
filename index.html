@@ -176,7 +176,17 @@
   <button class="btn" id="bGoto"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"/><circle cx="12" cy="12" r="1.8"/></svg><span class="lbl">Go to</span></button>
   <button class="btn" id="bPin"><svg class="ic" viewBox="0 0 24 24"><path d="M12 21s6-5.7 6-11a6 6 0 1 0-12 0c0 5.3 6 11 6 11z"/><circle cx="12" cy="10" r="2.2"/></svg><span class="lbl">Pin</span></button>
   <button class="btn" id="bKml"><svg class="ic" viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 9-9"/><circle cx="3" cy="17" r="1.7"/><circle cx="21" cy="5" r="1.7"/></svg><span class="lbl">Lines</span></button>
-  <button class="btn" id="bKey"><svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="9" r="4.5"/><path d="M12.2 12.2L20 20M16.5 16.5l2-2M19 19l1.5-1.5"/></svg><span class="lbl">Map key</span></button>
+  <button class="btn" id="bSettings"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3.2M12 18.3v3.2M2.5 12h3.2M18.3 12h3.2M5 5l2.2 2.2M16.8 16.8L19 19M19 5l-2.2 2.2M7.2 16.8L5 19"/></svg><span class="lbl">Settings</span></button>
+</div>
+
+<div class="sheet" id="sheetSettings">
+  <button class="close" data-close>&times;</button>
+  <h2>Settings</h2>
+  <div class="setrow"><div class="setl"><div class="setname">Aircraft icon</div><div class="sethint">Orange Cessna that rotates to your track. Off shows a green dot.</div></div><button class="tgl" id="tgIcon" aria-label="Aircraft icon"></button></div>
+  <div class="setrow"><div class="setl"><div class="setname">Track vector</div><div class="sethint">Line ahead of you showing where you'll be in one minute.</div></div><button class="tgl" id="tgVec" aria-label="Track vector"></button></div>
+  <div class="setrow"><div class="setl"><div class="setname">Range rings</div><div class="sethint">Distance rings in nautical miles, centred on you — for judging distance to targets.</div></div><button class="tgl" id="tgRings" aria-label="Range rings"></button></div>
+  <div style="border-top:1px solid var(--line);margin:16px 0 12px"></div>
+  <div class="row"><button class="act" id="openKey" style="background:var(--panel2);color:var(--ink)">Imagery &amp; downloads</button></div>
 </div>
 
 <div class="sheet" id="sheetKey">
@@ -184,10 +194,6 @@
   <h2>Download imagery</h2>
   <div class="hint">Choose a pipeline and detail level, then tap Download. Imagery and ground elevation save to this device for offline use. Overlapping lines share tiles (downloaded once); deleting one line's imagery keeps what other lines still use.</div>
   <div class="row"><label>Pipeline</label><select id="dlLineSel" class="dlsel"></select></div>
-  <div class="gp-chips" id="dlZoom" style="grid-template-columns:repeat(2,1fr)">
-    <button class="gp-chip on" data-z="15"><b>Standard</b><s>zoom 15</s></button>
-    <button class="gp-chip" data-z="16"><b>Detailed</b><s>zoom 16</s></button>
-  </div>
   <div class="gp-read" id="dlEst" style="font-size:14px">—</div>
   <div id="dlProgWrap" style="display:none;margin:2px 0 10px">
     <div style="height:9px;background:var(--panel2);border:1px solid var(--line);border-radius:5px;overflow:hidden">
@@ -219,6 +225,17 @@
 .gp-chip.on{border-color:var(--amber);background:var(--panel2)}
 .dlln{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:9px;padding:7px 11px;font-size:13px;font-weight:600;cursor:pointer;min-height:38px}
 .dlsel{flex:1;min-width:0;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:11px 12px;font-size:15px;min-height:44px;-webkit-appearance:none;appearance:none;background-image:url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%23a9b4c0\" stroke-width=\"3\"><path d=\"M6 9l6 6 6-6\"/></svg>');background-repeat:no-repeat;background-position:right 12px center;padding-right:34px}
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 0;border-bottom:1px solid var(--line)}
+.setl{min-width:0}
+.setname{font-size:15px;font-weight:700;color:var(--ink)}
+.sethint{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.35}
+.tgl{flex:none;width:52px;height:31px;border-radius:16px;border:1px solid var(--line);background:var(--panel2);position:relative;cursor:pointer;transition:background .15s,border-color .15s;padding:0}
+.tgl::after{content:'';position:absolute;top:2px;left:2px;width:25px;height:25px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.4)}
+.tgl.on{background:var(--amber);border-color:var(--amber)}
+.tgl.on::after{left:23px}
+.leaflet-div-icon.planeIcon,.leaflet-div-icon.ringLbl{background:none;border:0}
+.planeRot{width:40px;height:40px;transform-origin:50% 50%;will-change:transform;pointer-events:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
+.ringLbl{font-size:11px;font-weight:700;color:#fff;text-shadow:0 0 3px #000,0 1px 3px #000;white-space:nowrap;text-align:center;pointer-events:none}
 .dlln.on{border-color:var(--amber);color:var(--amber);background:var(--panel2)}
 .gp-chip b{color:var(--ink);font-size:16px;font-weight:600;font-family:"SF Mono",ui-monospace,monospace}
 .gp-chip s{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
@@ -350,7 +367,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09b';
+var swReg=null, APP_VERSION='2026.08.09c';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -741,6 +758,55 @@ function startTracking(){
   tracking=true; return true;
 }
 const GPS_DR_MAX=2.5, GPS_TAU=0.14;   // seconds: dead-reckon cap, and easing time-constant
+/* ---------- user settings (persisted) ---------- */
+const SETTINGS_DEFAULT={gpsIcon:'plane', trackVector:true, rangeRings:false};
+let settings=Object.assign({},SETTINGS_DEFAULT);
+try{ settings=Object.assign(settings, JSON.parse(localStorage.getItem('settings')||'{}')); }catch(e){}
+function saveSettings(){ try{ localStorage.setItem('settings',JSON.stringify(settings)); }catch(e){} }
+
+/* Orange top-down high-wing (Cessna-style) aircraft, nose pointing up (north) at 0°. */
+const PLANE_SVG='<svg viewBox="0 0 24 24" width="40" height="40"><polygon fill="#ff7a1a" stroke="#241200" stroke-width="0.7" stroke-linejoin="round" points="12,2 13,5.5 13,9 22,11 22,12.3 13,11.5 12.8,18 16.5,19.8 16.5,20.9 12.5,20 12,22 11.5,20 7.5,20.9 7.5,19.8 11.2,18 11,11.5 2,12.3 2,11 11,9 11,5.5"/></svg>';
+let gpsPlaneEl=null, gpsVec=null, gpsRings=[], gpsRingLabels=[], gpsTrack=0;
+const TRACK_SECONDS=60, RING_NM=[1,2,3];
+
+function gpsSpeedMS(){ if(!gpsAnchor||!gpsDisp) return 0;
+  return Math.hypot(gpsAnchor.vlat*111320, gpsAnchor.vlon*111320*Math.cos(gpsDisp.lat*Math.PI/180)); }
+function updateTrack(){ if(!gpsAnchor||!gpsDisp) return;
+  if(gpsSpeedMS()>1.5){   // only update heading when actually moving, else keep last (no spinning when parked)
+    gpsTrack=(Math.atan2(gpsAnchor.vlon*Math.cos(gpsDisp.lat*Math.PI/180), gpsAnchor.vlat)*180/Math.PI+360)%360; } }
+
+/* (re)create the ownship marker + accuracy circle + track vector + range rings per settings */
+function buildGpsDisplay(){
+  if(!map||!gpsDisp) return; const ll=[gpsDisp.lat,gpsDisp.lon];
+  if(gpsMarker){ map.removeLayer(gpsMarker); gpsMarker=null; gpsPlaneEl=null; }
+  if(settings.gpsIcon==='plane'){
+    gpsMarker=L.marker(ll,{icon:L.divIcon({className:'planeIcon',html:'<div class="planeRot">'+PLANE_SVG+'</div>',iconSize:[40,40],iconAnchor:[20,20]}),interactive:false,keyboard:false,zIndexOffset:1000}).addTo(map);
+    gpsPlaneEl=gpsMarker._icon?gpsMarker._icon.querySelector('.planeRot'):null;
+    if(gpsPlaneEl) gpsPlaneEl.style.transform='rotate('+gpsTrack.toFixed(1)+'deg)';
+  } else {
+    gpsMarker=L.circleMarker(ll,{radius:7,color:'#04101f',weight:2,fillColor:'#3ddc84',fillOpacity:1,interactive:false}).addTo(map);
+  }
+  if(!gpsCircle) gpsCircle=L.circle(ll,{radius:gpsAcc||30,weight:1,fillOpacity:.06,interactive:false}).addTo(map);
+  const cc=(settings.gpsIcon==='plane')?'#ff7a1a':'#3ddc84'; gpsCircle.setStyle({color:cc,fillColor:cc});
+  if(gpsVec){ map.removeLayer(gpsVec); gpsVec=null; }
+  if(settings.trackVector) gpsVec=L.polyline([ll,ll],{color:'#ff7a1a',weight:3,opacity:.9,interactive:false}).addTo(map);
+  gpsRings.forEach(c=>map.removeLayer(c)); gpsRings=[];
+  gpsRingLabels.forEach(m=>map.removeLayer(m)); gpsRingLabels=[];
+  if(settings.rangeRings){ for(const nm of RING_NM){
+    gpsRings.push(L.circle(ll,{radius:nm*1852,color:'#fff',weight:1,opacity:.55,fill:false,dashArray:'5 6',interactive:false}).addTo(map));
+    gpsRingLabels.push(L.marker(ll,{icon:L.divIcon({className:'ringLbl',html:nm+' NM',iconSize:[42,16],iconAnchor:[21,8]}),interactive:false,keyboard:false}).addTo(map)); } }
+  updateGpsGraphics();
+}
+/* move the vector + rings + labels to follow the smoothed position (called each frame) */
+function updateGpsGraphics(){
+  if(!gpsDisp) return; const ll=[gpsDisp.lat,gpsDisp.lon];
+  if(gpsVec){ const sp=gpsSpeedMS();
+    if(sp>1.5&&gpsAnchor){ gpsVec.setLatLngs([ll,[gpsDisp.lat+gpsAnchor.vlat*TRACK_SECONDS, gpsDisp.lon+gpsAnchor.vlon*TRACK_SECONDS]]); if(gpsVec.options.opacity!==0.9) gpsVec.setStyle({opacity:.9}); }
+    else if(gpsVec.options.opacity!==0){ gpsVec.setStyle({opacity:0}); } }
+  for(let i=0;i<gpsRings.length;i++){ gpsRings[i].setLatLng(ll);
+    gpsRingLabels[i].setLatLng([gpsDisp.lat+(RING_NM[i]*1852)/111320, gpsDisp.lon]); }
+}
+
 function gpsVel(pos){ const c=pos.coords;
   if(c.speed!=null&&isFinite(c.speed)&&c.speed>0.7&&c.heading!=null&&isFinite(c.heading)){
     const h=c.heading*Math.PI/180, vN=c.speed*Math.cos(h), vE=c.speed*Math.sin(h);   // GPS gives true velocity when moving
@@ -759,17 +825,13 @@ function onFix(pos){
   const v=gpsVel(pos);
   gpsAnchor={lat:latitude,lon:longitude,t:performance.now(),vlat:v.vlat,vlon:v.vlon};
   gpsAcc=accuracy; gpsPrevFix={lat:latitude,lon:longitude,t:pos.timestamp};
-  if(!gpsMarker){
-    gpsDisp={lat:latitude,lon:longitude};
-    gpsMarker=L.circleMarker([latitude,longitude],{radius:7,color:'#04101f',weight:2,fillColor:'#3ddc84',fillOpacity:1}).addTo(map);
-    gpsCircle=L.circle([latitude,longitude],{radius:accuracy,color:'#3ddc84',weight:1,fillColor:'#3ddc84',fillOpacity:.08}).addTo(map);
-    if(following) map.panTo([latitude,longitude],{animate:true,duration:.4});
-  }
   if(!gpsDisp) gpsDisp={lat:latitude,lon:longitude};
+  updateTrack();
+  if(!gpsMarker){ buildGpsDisplay(); if(following) map.panTo([latitude,longitude],{animate:true,duration:.4}); }
   if(!gpsRaf){ _gpsFrameT=0; gpsRaf=requestAnimationFrame(gpsStep); }
 }
-/* Smoothly ease the dot toward the fix dead-reckoned to 'now' by its velocity, every
-   frame — so the marker glides continuously instead of snapping once per GPS update. */
+/* Smoothly ease the marker toward the fix dead-reckoned to 'now' by its velocity, every
+   frame — so it glides continuously instead of snapping once per GPS update. */
 function gpsStep(){
   gpsRaf=0;
   if(!gpsAnchor||!gpsMarker||!gpsDisp) return;
@@ -780,7 +842,12 @@ function gpsStep(){
   const a=1-Math.exp(-fdt/GPS_TAU);
   gpsDisp.lat+=(tgtLat-gpsDisp.lat)*a; gpsDisp.lon+=(tgtLon-gpsDisp.lon)*a;
   const ll=[gpsDisp.lat,gpsDisp.lon];
-  gpsMarker.setLatLng(ll); if(gpsCircle){ gpsCircle.setLatLng(ll); if(gpsCircle.getRadius()!==gpsAcc) gpsCircle.setRadius(gpsAcc); }
+  updateTrack();
+  gpsMarker.setLatLng(ll);
+  if(settings.gpsIcon==='plane'){ if(!gpsPlaneEl&&gpsMarker._icon) gpsPlaneEl=gpsMarker._icon.querySelector('.planeRot');
+    if(gpsPlaneEl) gpsPlaneEl.style.transform='rotate('+gpsTrack.toFixed(1)+'deg)'; }
+  if(gpsCircle){ gpsCircle.setLatLng(ll); if(gpsCircle.getRadius()!==gpsAcc) gpsCircle.setRadius(gpsAcc||30); }
+  updateGpsGraphics();
   if(following) map.panTo(ll,{animate:false});
   const moving=(Math.abs(gpsAnchor.vlat)+Math.abs(gpsAnchor.vlon))>1e-9;
   const gap=Math.abs(tgtLat-gpsDisp.lat)+Math.abs(tgtLon-gpsDisp.lon);
@@ -1476,7 +1543,14 @@ $('#kmlList').addEventListener('click',e=>{
     idbDel(id); kmls=kmls.filter(k=>k.id!==id); setOrders(); saveKmls(); kmlExpanded=null; renderKmlList(); return; }
 });
 $('#bKml').onclick=()=>{ renderKmlList(); openSheet('sheetKml'); };
-$('#bKey').onclick=()=>{ openSheet('sheetKey'); dlRefresh(); dlStoredRefresh(); };
+function syncSettingsUI(){ $('#tgIcon').classList.toggle('on',settings.gpsIcon==='plane');
+  $('#tgVec').classList.toggle('on',!!settings.trackVector);
+  $('#tgRings').classList.toggle('on',!!settings.rangeRings); }
+$('#bSettings').onclick=()=>{ syncSettingsUI(); openSheet('sheetSettings'); };
+$('#openKey').onclick=()=>{ openSheet('sheetKey'); dlRefresh(); dlStoredRefresh(); };
+$('#tgIcon').onclick=()=>{ settings.gpsIcon=(settings.gpsIcon==='plane'?'dot':'plane'); saveSettings(); syncSettingsUI(); if(gpsMarker) buildGpsDisplay(); };
+$('#tgVec').onclick=()=>{ settings.trackVector=!settings.trackVector; saveSettings(); syncSettingsUI(); if(gpsMarker) buildGpsDisplay(); };
+$('#tgRings').onclick=()=>{ settings.rangeRings=!settings.rangeRings; saveSettings(); syncSettingsUI(); if(gpsMarker) buildGpsDisplay(); };
 
 /* ---------- One-click offline imagery download for the current view ---------- */
 const DL_TILE_CAP=400000;            // absolute backstop (~9GB); the practical limit is the device's free storage, checked live
@@ -1495,7 +1569,7 @@ function freeBytes(){                 // best-effort free storage (quota - usage
   return Promise.resolve(null);
 }
 
-function dlZoomSel(){ const c=document.querySelector('#dlZoom .gp-chip.on'); return c?parseInt(c.getAttribute('data-z'),10):15; }
+function dlZoomSel(){ return 16; }   // locked to ZL16
 function activeBaseLayer(){ if(map.hasLayer(esri)) return esri; if(map.hasLayer(s2)) return s2; if(map.hasLayer(osm)) return osm; return esri; }
 function lon2tx(lon,z){ return Math.floor((lon+180)/360*Math.pow(2,z)); }
 function lat2ty(lat,z){ const r=lat*Math.PI/180; return Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z)); }
@@ -1840,7 +1914,6 @@ async function dlRunAll(){
 }
 function dlChip(group){ $('#'+group).addEventListener('click',e=>{ const c=e.target.closest('.gp-chip'); if(!c) return;
   document.querySelectorAll('#'+group+' .gp-chip').forEach(x=>x.classList.remove('on')); c.classList.add('on'); dlRefresh(); }); }
-dlChip('dlZoom');
 function renderDlLineChips(){
   const sel=$('#dlLineSel'); if(!sel) return;
   const lines=(typeof kmls!=='undefined'?kmls:[]);
