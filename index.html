@@ -181,32 +181,12 @@
 
 <div class="sheet" id="sheetKey">
   <button class="close" data-close>&times;</button>
-  <h2>Satellite imagery key</h2>
-  <div class="hint">For sharp Esri satellite imagery, paste a free <b>ArcGIS API key</b>. Create a free account at
-    <b>location.arcgis.com</b> → Developer dashboard → API keys. The key is stored only on this device.
-    Free for non-revenue use under ~1M tiles/month. Leave blank to use the no-key fallback or OSM.</div>
-  <div class="row"><label>API key</label><input type="text" id="inKey" placeholder="AAPK…" autocapitalize="none" autocorrect="off"></div>
-  <div class="row"><button class="act amber" id="saveKey">Save key</button>
-    <button class="act" id="clearKey" style="background:var(--panel2);color:var(--ink)">Clear</button></div>
-
-  <div style="border-top:1px solid var(--line);margin:16px 0 12px"></div>
-  <h2 style="font-size:14px">Download imagery</h2>
-  <div class="hint">Along a pipeline: pick the line, radius and detail, then tap once. Imagery and ground elevation are saved on the device — overlapping lines share tiles (downloaded once), and deleting one line's imagery keeps what other lines still use. Saves the imagery layer that's currently showing.</div>
-  <div class="gp-chips" id="dlMode" style="grid-template-columns:1fr 1fr">
-    <button class="gp-chip on" data-mode="corridor"><b>Along a pipeline</b><s>buffer one KML line</s></button>
-    <button class="gp-chip" data-mode="box"><b>Current view</b><s>the whole rectangle</s></button>
-  </div>
-  <div id="dlLine" style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0"></div>
-  <div class="gp-chips" id="dlRadius" style="grid-template-columns:repeat(3,1fr)">
-    <button class="gp-chip" data-r="2"><b>2 km</b><s>each side</s></button>
-    <button class="gp-chip on" data-r="5"><b>5 km</b><s>each side</s></button>
-    <button class="gp-chip" data-r="10"><b>10 km</b><s>each side</s></button>
-  </div>
-  <div class="gp-chips" id="dlZoom" style="grid-template-columns:repeat(4,1fr)">
-    <button class="gp-chip" data-z="14"><b>14</b><s>light</s></button>
-    <button class="gp-chip on" data-z="15"><b>15</b><s>standard</s></button>
-    <button class="gp-chip" data-z="16"><b>16</b><s>detailed</s></button>
-    <button class="gp-chip" data-z="17"><b>17</b><s>fine</s></button>
+  <h2>Download imagery</h2>
+  <div class="hint">Choose a pipeline and detail level, then tap Download. Imagery and ground elevation save to this device for offline use. Overlapping lines share tiles (downloaded once); deleting one line's imagery keeps what other lines still use.</div>
+  <div class="row"><label>Pipeline</label><select id="dlLineSel" class="dlsel"></select></div>
+  <div class="gp-chips" id="dlZoom" style="grid-template-columns:repeat(2,1fr)">
+    <button class="gp-chip on" data-z="15"><b>Standard</b><s>zoom 15</s></button>
+    <button class="gp-chip" data-z="16"><b>Detailed</b><s>zoom 16</s></button>
   </div>
   <div class="gp-read" id="dlEst" style="font-size:14px">—</div>
   <div id="dlProgWrap" style="display:none;margin:2px 0 10px">
@@ -216,7 +196,7 @@
     <div id="dlProgTxt" class="hint" style="margin:6px 0 0"></div>
   </div>
   <div class="row">
-    <button class="act amber" id="dlStart">Download area</button>
+    <button class="act amber" id="dlStart">Download this line</button>
     <button class="act" id="dlCancel" style="background:var(--panel2);color:var(--ink);display:none">Cancel</button>
   </div>
   <div class="row" id="dlAllRow"><button class="act" id="dlAll" style="background:var(--panel2);color:var(--ink)">Download ALL lines — imagery + elevation</button></div>
@@ -238,6 +218,7 @@
 .gp-chip{min-height:44px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05}
 .gp-chip.on{border-color:var(--amber);background:var(--panel2)}
 .dlln{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:9px;padding:7px 11px;font-size:13px;font-weight:600;cursor:pointer;min-height:38px}
+.dlsel{flex:1;min-width:0;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:11px 12px;font-size:15px;min-height:44px;-webkit-appearance:none;appearance:none;background-image:url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%23a9b4c0\" stroke-width=\"3\"><path d=\"M6 9l6 6 6-6\"/></svg>');background-repeat:no-repeat;background-position:right 12px center;padding-right:34px}
 .dlln.on{border-color:var(--amber);color:var(--amber);background:var(--panel2)}
 .gp-chip b{color:var(--ink);font-size:16px;font-weight:600;font-family:"SF Mono",ui-monospace,monospace}
 .gp-chip s{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
@@ -369,7 +350,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09';
+var swReg=null, APP_VERSION='2026.08.09b';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -440,7 +421,7 @@ const ESRI_ATTR='Imagery &copy; Esri, Maxar, Earthstar Geographics';
 // bumping KEY_VER clears any stale key saved on a device so the new baked key wins
 const KEY_VER='4';
 if(localStorage.getItem('esriKeyVer')!==KEY_VER){ localStorage.removeItem('esriKey'); localStorage.setItem('esriKeyVer',KEY_VER); }
-let esriKey=localStorage.getItem('esriKey')||'AAPTagkQq6As6m1gxdI19EzG2fA..Ul-ABwLCYFI6yJgMhn3Ah0wZF0IG_FUlwLM6nExbMSc8_7j5YCpOKqAlqo_17dF6wU28aP6Y8pfng-W-U_MTZfzP3dCUjyupViUcfysIaHwJF6WLGMjtofCKIg8SSkWVt1psgHQvAz0uHLS_yK2VozgGa4aodGP7R3qZBi5c7VlMKkb_XaWd01zwc9RrQ7apJZvk0uduTqU6Lov_eIuVJhRYp3jtqH7GHJkorXII0-fDheCg2wkY9BVCWU5tqQ16AT1_MwPAK9WG';
+let esriKey='AAPTagkQq6As6m1gxdI19EzG2fA..Ul-ABwLCYFI6yJgMhn3Ah0wZF0IG_FUlwLM6nExbMSc8_7j5YCpOKqAlqo_17dF6wU28aP6Y8pfng-W-U_MTZfzP3dCUjyupViUcfysIaHwJF6WLGMjtofCKIg8SSkWVt1psgHQvAz0uHLS_yK2VozgGa4aodGP7R3qZBi5c7VlMKkb_XaWd01zwc9RrQ7apJZvk0uduTqU6Lov_eIuVJhRYp3jtqH7GHJkorXII0-fDheCg2wkY9BVCWU5tqQ16AT1_MwPAK9WG';   // baked in; not user-editable
 function esriUrl(){
   return 'https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
        + (esriKey?('?token='+encodeURIComponent(esriKey)):'');
@@ -1484,9 +1465,7 @@ $('#kmlList').addEventListener('click',e=>{
   if(act==='zoom'){ const go=()=>{ const l=kmlLayers[id]; if(l&&l.bounds){ map.fitBounds(l.bounds.pad(.1)); closeSheets(); } else toast('No geometry to zoom to'); };
     if(kmlLayers[id]) go(); else loadKmlGeom(item).then(go); return; }
   if(act==='replace'){ replaceTargetId=id; $('#replaceIn').click(); return; }
-  if(act==='dlimg'){ dlTargetLine=id; $('#inKey').value=esriKey; openSheet('sheetKey');
-    document.querySelectorAll('#dlMode .gp-chip').forEach(x=>x.classList.toggle('on',x.getAttribute('data-mode')==='corridor'));
-    dlRefresh(); dlStoredRefresh(); return; }
+  if(act==='dlimg'){ dlTargetLine=id; openSheet('sheetKey'); dlRefresh(); dlStoredRefresh(); return; }
   if(act==='delimg'){ if(!confirm('Delete downloaded imagery for "'+item.name+'"? Tiles shared with other lines are kept.')) return;
     btn.textContent='Deleting…';
     deleteLineImagery(id).then(n=>{ toast(n?('Deleted '+n.toLocaleString()+' tiles — '+item.name):('No imagery to delete for '+item.name)); renderKmlList(); if(typeof dlStoredRefresh==='function') dlStoredRefresh(); }); return; }
@@ -1497,10 +1476,7 @@ $('#kmlList').addEventListener('click',e=>{
     idbDel(id); kmls=kmls.filter(k=>k.id!==id); setOrders(); saveKmls(); kmlExpanded=null; renderKmlList(); return; }
 });
 $('#bKml').onclick=()=>{ renderKmlList(); openSheet('sheetKml'); };
-$('#bKey').onclick=()=>{ $('#inKey').value=esriKey; openSheet('sheetKey'); dlRefresh(); dlStoredRefresh(); };
-$('#saveKey').onclick=()=>{ applyEsriKey($('#inKey').value);
-  layersCtl.addTo(map); closeSheets(); toast(esriKey?'Key saved — Esri satellite on':'Key cleared'); };
-$('#clearKey').onclick=()=>{ applyEsriKey(''); $('#inKey').value=''; toast('Key cleared'); };
+$('#bKey').onclick=()=>{ openSheet('sheetKey'); dlRefresh(); dlStoredRefresh(); };
 
 /* ---------- One-click offline imagery download for the current view ---------- */
 const DL_TILE_CAP=400000;            // absolute backstop (~9GB); the practical limit is the device's free storage, checked live
@@ -1555,8 +1531,8 @@ function stampDisk(set,cx,cy,rT,z){ const m=Math.pow(2,z)-1, r2=rT*rT;
     const dx=Math.floor(Math.sqrt(Math.max(0,r2-dy*dy)));
     let x0=cx-dx,x1=cx+dx; if(x0<0)x0=0; if(x1>m)x1=m;
     for(let xx=x0;xx<=x1;xx++) set.add(xx*DL_KEYMUL+yy); } }
-function dlModeSel(){ const c=document.querySelector('#dlMode .gp-chip.on'); return c?c.getAttribute('data-mode'):'corridor'; }
-function dlRadiusSel(){ const c=document.querySelector('#dlRadius .gp-chip.on'); return c?parseFloat(c.getAttribute('data-r')):5; }
+function dlModeSel(){ return 'corridor'; }   // only along-a-line downloads now
+function dlRadiusSel(){ return 2; }          // fixed 2 km each side
 let dlTargetLine=null;   // when set, download/estimate operate on this one line
 function dlOnLines(){ const all=(typeof kmls!=='undefined'?kmls:[]);
   if(dlTargetLine){ const it=all.find(k=>k.id===dlTargetLine); return it?[it]:[]; }
@@ -1685,9 +1661,8 @@ async function dlPlan(){
 let _dlSeq=0;
 async function dlRefresh(){
   const mode=dlModeSel();
-  $('#dlRadius').style.display=(mode==='corridor')?'':'none';
   if(!dlBusy){ const anyLines=(typeof kmls!=='undefined'?kmls:[]).length>0;
-    $('#dlAllRow').style.display=(mode==='corridor'&&anyLines)?'':'none'; }
+    $('#dlAllRow').style.display=anyLines?'':'none'; }
   renderDlLineChips();
   const est=$('#dlEst'), btn=$('#dlStart'), seq=++_dlSeq;
   if(mode==='corridor'&&!dlOnLines().length){
@@ -1865,24 +1840,23 @@ async function dlRunAll(){
 }
 function dlChip(group){ $('#'+group).addEventListener('click',e=>{ const c=e.target.closest('.gp-chip'); if(!c) return;
   document.querySelectorAll('#'+group+' .gp-chip').forEach(x=>x.classList.remove('on')); c.classList.add('on'); dlRefresh(); }); }
-dlChip('dlZoom'); dlChip('dlMode'); dlChip('dlRadius');
+dlChip('dlZoom');
 function renderDlLineChips(){
-  const box=$('#dlLine'); if(!box) return;
-  if(dlModeSel()!=='corridor'){ box.style.display='none'; return; }
-  box.style.display='flex';
+  const sel=$('#dlLineSel'); if(!sel) return;
   const lines=(typeof kmls!=='undefined'?kmls:[]);
-  if(!lines.length){ box.innerHTML='<div class="hint" style="margin:0">Import or enable a pipeline line first.</div>'; return; }
+  if(!lines.length){ sel.innerHTML='<option>Import or enable a pipeline first</option>'; sel.disabled=true; return; }
+  sel.disabled=false;
   if(!dlTargetLine||!lines.find(k=>k.id===dlTargetLine)) dlTargetLine=lines[0].id;
   let h=''; for(let i=0;i<lines.length;i++){ const k=lines[i];
-    h+='<button class="dlln'+(k.id===dlTargetLine?' on':'')+'" data-id="'+k.id+'">'+escapeHtml(k.name)+'</button>'; }
-  box.innerHTML=h;
+    h+='<option value="'+escapeHtml(k.id)+'"'+(k.id===dlTargetLine?' selected':'')+'>'+escapeHtml(k.name)+'</option>'; }
+  sel.innerHTML=h;
 }
-$('#dlLine').addEventListener('click',e=>{ const b=e.target.closest('.dlln'); if(!b) return;
-  dlTargetLine=b.getAttribute('data-id'); _corr=null; renderDlLineChips(); dlRefresh(); });
+$('#dlLineSel').addEventListener('change',e=>{ dlTargetLine=e.target.value; _corr=null; dlRefresh(); });
 $('#dlStart').onclick=dlRun;
 $('#dlAll').onclick=dlRunAll;
 $('#dlCancel').onclick=()=>{ dlCancel=true; };
 $('#dlClear').onclick=async()=>{
+  if(!confirm('Delete ALL downloaded imagery and elevation for every line?\n\nThis cannot be undone and re-downloading takes hours. Your pipeline lines and pins are kept.')) return;
   await tileClear();
   try{ await demStoreClear(); _demStored=[]; rebuildDEM(); }catch(e){}
   try{ const all=await imgIdxAll(); for(const id in all) await imgIdxDel(id); }catch(e){}   // drop per-line ownership records too
