@@ -104,6 +104,11 @@
     background:#3a1212;border:1px solid var(--warn);color:#ffd9d9;border-radius:10px;
     padding:9px 12px;font-size:12px;line-height:1.4}
   #banner.show{display:block}
+  #updateBar{position:absolute;left:10px;right:10px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:660;
+    display:none;align-items:center;gap:10px;justify-content:space-between;
+    background:var(--panel);border:1px solid var(--amber);border-radius:12px;padding:10px 12px;
+    color:var(--ink);font-size:13px;box-shadow:0 6px 22px rgba(0,0,0,.45)}
+  #updateBar button{flex:none;background:var(--amber);color:#111;border:0;border-radius:8px;padding:9px 15px;font-weight:700;font-size:13px}
   #boot{position:absolute;top:0;right:0;bottom:0;left:0;z-index:900;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
     padding:24px;background:var(--bg);color:var(--muted);font-size:13px;transition:opacity .4s ease}
   #boot.hide{opacity:0;pointer-events:none}
@@ -163,6 +168,7 @@
 </div>
 
 <div id="banner"></div>
+<div id="updateBar" style="display:none"><span>New version ready — your downloads are kept</span><button onclick="location.reload()">Refresh</button></div>
 
 <div id="dock">
   <button class="btn gps" id="bGps"><svg class="ic" viewBox="0 0 24 24"><path d="M3 11l18-7-7 18-3-8-8-3z"/></svg><span class="lbl">GPS</span></button>
@@ -216,6 +222,8 @@
   <div class="row" id="dlAllRow"><button class="act" id="dlAll" style="background:var(--panel2);color:var(--ink)">Download ALL lines — imagery + elevation</button></div>
   <div class="hint" id="dlStored" style="margin:6px 0 8px"></div>
   <div class="row"><button class="act" id="dlClear" style="background:var(--panel2);color:var(--ink)">Clear saved imagery</button></div>
+  <div class="hint" style="margin:12px 0 4px">App version <b id="appVer">—</b>. Updating keeps your downloaded imagery &amp; elevation — you never need to clear anything to update.</div>
+  <div class="row"><button class="act" id="appUpdate" onclick="appCheckUpdate()" style="background:var(--panel2);color:var(--ink)">Check for updates</button></div>
 </div>
 
 <style>
@@ -357,12 +365,41 @@ function boot(){
   }, wait);
 }
 
-/* ---------- service worker: offline app shell + tile/grid caching ---------- */
+/* ---------- service worker + safe in-app updating ----------
+   Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
+   a code/service-worker update — only the app shell is replaced. So updating is just a
+   reload once online. We also request persistent storage so iOS won't evict the downloads. */
+var swReg=null, APP_VERSION='2026.08.09';
+function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
+function appCheckUpdate(){
+  var t=document.getElementById('toast');
+  var say=function(m){ if(t){ t.textContent=m; t.classList.add('show'); setTimeout(function(){ t.classList.remove('show'); },2400); } };
+  if(navigator.onLine===false){ say('Connect to the internet to update'); return; }
+  say('Getting the latest version… your downloads are kept');
+  try{ if(swReg) swReg.update(); }catch(e){}
+  setTimeout(function(){ location.reload(); }, 650);   // reload pulls the newest app; IndexedDB downloads stay put
+}
 if('serviceWorker' in navigator && (location.protocol==='https:'||location.protocol==='http:')){
   window.addEventListener('load',function(){
-    navigator.serviceWorker.register('sw.js').catch(function(){});
+    var v=document.getElementById('appVer'); if(v) v.textContent=APP_VERSION;
+    navigator.serviceWorker.register('sw.js').then(function(reg){
+      swReg=reg;
+      if(reg.waiting && navigator.serviceWorker.controller) swShowUpdate();
+      reg.addEventListener('updatefound',function(){
+        var nw=reg.installing; if(!nw) return;
+        nw.addEventListener('statechange',function(){
+          if(nw.state==='installed' && navigator.serviceWorker.controller) swShowUpdate();   // a new version is ready
+        });
+      });
+    }).catch(function(){});
+    var chk=function(){ if(swReg){ try{ swReg.update(); }catch(e){} } };
+    setInterval(chk, 60*60*1000);                                   // hourly
+    document.addEventListener('visibilitychange',function(){ if(!document.hidden) chk(); });  // and when returning to the app
   });
+} else {
+  window.addEventListener('load',function(){ var v=document.getElementById('appVer'); if(v) v.textContent=APP_VERSION; });
 }   // native (capacitor://) has no service worker and doesn't need one — the shell is bundled and all offline data lives in IndexedDB/localStorage
+try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(e){}   // keep downloads from being evicted
 
 function ensureJsZip(){
   return new Promise(function(res,rej){
