@@ -367,7 +367,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09f';
+var swReg=null, APP_VERSION='2026.08.09g';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1725,19 +1725,27 @@ async function buildElevRegion(mode,radiusKm,onProg,cancelled){
   if(!idxs.length) return null;
   if(idxs.length>ELEV_CELL_CAP) return {tooBig:true,count:idxs.length};
   const data=new Int16Array(total); data.fill(DEM_ND);
-  let done=0;
+  let done=0, fails=0;
+  async function batchRetry(lats,lons){
+    for(let attempt=0;attempt<4;attempt++){
+      const e=await elevBatch(lats,lons); if(e) return e;
+      await new Promise(r=>setTimeout(r, 800*(attempt+1)));   // back off on failure / rate-limit (429)
+    }
+    return null;
+  }
   for(let i=0;i<idxs.length;i+=100){
     if(cancelled&&cancelled()) return {cancelled:true};
     const chunk=idxs.slice(i,i+100);
     const lats=chunk.map(ix=>S+Math.floor(ix/nCols)*dLat);
     const lons=chunk.map(ix=>W+(ix%nCols)*dLon);
-    let elevs=await elevBatch(lats,lons);
-    if(!elevs){ await new Promise(r=>setTimeout(r,1500)); elevs=await elevBatch(lats,lons); }
-    if(elevs) for(let j=0;j<chunk.length;j++){ const v=elevs[j];
-      data[chunk[j]]=(v!=null&&isFinite(v))?Math.max(-32000,Math.min(32000,Math.round(v))):DEM_ND; }
+    const elevs=await batchRetry(lats,lons);
+    if(elevs){ for(let j=0;j<chunk.length;j++){ const v=elevs[j];
+      data[chunk[j]]=(v!=null&&isFinite(v))?Math.max(-32000,Math.min(32000,Math.round(v))):DEM_ND; } }
+    else fails++;
     done+=chunk.length; if(onProg) onProg(done,idxs.length);
+    await new Promise(r=>setTimeout(r,120));   // gentle pacing to stay under the elevation API's rate limit
   }
-  return {region:{lat0:S,lon0:W,dLat:dLat,dLon:dLon,nRows:nRows,nCols:nCols,data:data},count:idxs.length};
+  return {region:{lat0:S,lon0:W,dLat:dLat,dLon:dLon,nRows:nRows,nCols:nCols,data:data},count:idxs.length,fails:fails};
 }
 function dlZHi(){ const lyr=activeBaseLayer(), maxN=(lyr.options.maxNativeZoom||lyr.options.maxZoom||19);
   const zSel=dlZoomSel(), zHi=Math.min(zSel,maxN); return {lyr,maxN,zSel,zHi,zLo:Math.min(8,zHi),capped:zSel>maxN}; }
