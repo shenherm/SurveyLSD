@@ -367,7 +367,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09e';
+var swReg=null, APP_VERSION='2026.08.09f';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -426,7 +426,7 @@ const showBanner=(m)=>{const b=$('#banner');b.innerHTML=m;b.classList.add('show'
 /* ---------- Map + base layers (with diagnosis) ---------- */
 const map = L.map('map',{zoomControl:true,attributionControl:true,
   center:[53.5461,-113.4938], zoom:13, maxZoom:21, zoomSnap:0.25,
-  preferCanvas:true, fadeAnimation:false, markerZoomAnimation:false});
+  preferCanvas:true, fadeAnimation:false, markerZoomAnimation:true});
 
 // old-iPad heuristic: A7/A8-class report few cores. Used to ease back on
 // concurrency and to chunk heavy loops so the tab is never frozen or killed.
@@ -527,16 +527,16 @@ const OfflineTileLayer=L.TileLayer.extend({
 });
 function offlineLayer(url,opts){ return new OfflineTileLayer(url,opts); }
 
-const esri=offlineLayer(esriUrl(),{maxZoom:21,maxNativeZoom:19,attribution:ESRI_ATTR,updateWhenIdle:true,updateWhenZooming:false,keepBuffer:1,layerId:'esri'});
+const esri=offlineLayer(esriUrl(),{maxZoom:21,maxNativeZoom:19,attribution:ESRI_ATTR,updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2,layerId:'esri'});
 
 // Offline base: EOX Sentinel-2 cloudless (~10m, free, legally bakeable). Online for now;
 // the pre-built MBTiles pack (build_offline_base.py) will make this work with no signal.
 const S2_YEAR='2024';
 const s2attr='Sentinel-2 cloudless '+S2_YEAR+' &copy; EOX IT Services GmbH (modified Copernicus Sentinel data)';
 const s2=offlineLayer('https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-'+S2_YEAR+'_3857/default/g/{z}/{y}/{x}.jpg',
-  {maxZoom:21,maxNativeZoom:14,attribution:s2attr,updateWhenIdle:true,updateWhenZooming:false,keepBuffer:1,layerId:'s2'});
+  {maxZoom:21,maxNativeZoom:14,attribution:s2attr,updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2,layerId:'s2'});
 
-const osm=offlineLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap',updateWhenIdle:true,updateWhenZooming:false,keepBuffer:1,layerId:'osm'});
+const osm=offlineLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap',updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2,layerId:'osm'});
 
 // One base layer at a time for speed (old iPads). Esri online by default;
 // switch to Sentinel-2 (the offline base) or OSM from the layers menu.
