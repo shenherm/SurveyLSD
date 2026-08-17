@@ -367,7 +367,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09g';
+var swReg=null, APP_VERSION='2026.08.09h';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1157,7 +1157,7 @@ map.on('click',e=>{
     if(S.mode==='coord'){
       const la=parseFloat(S.coord.lat), lo=parseFloat(S.coord.lon);
       if(isNaN(la)||isNaN(lo)){toast('Enter lat and lon');return;}
-      map.setView([Math.abs(la), -Math.abs(lo)],16);closeSheets();return;
+      setFollow(false); map.setView([Math.abs(la), -Math.abs(lo)],16);closeSheets();return;
     }
     const L=S.lsd;
     if(!L.spot||!L.sec||!L.twp||!L.rge||!L.mer){toast('Fill every field first');return;}
@@ -1166,7 +1166,7 @@ map.on('click',e=>{
       : {qtr:L.spot,sec:+L.sec,twp:+L.twp,rge:+L.rge,mer:+L.mer};
     const ll=lsdToLatLon(o);
     if(!ll){toast('Not found in the grid');return;}
-    map.setView([ll.lat,ll.lon], S.spotType==='lsd'?17:16);closeSheets();
+    setFollow(false); map.setView([ll.lat,ll.lon], S.spotType==='lsd'?17:16);closeSheets();
   };
   $('#bGoto').onclick=()=>{ resetAll(); all(); openSheet('sheetGoto'); };
   all();
@@ -1551,7 +1551,7 @@ $('#kmlList').addEventListener('click',e=>{
     if(kmlLayers[id]) applyStyle(item); saveKmls(); renderKmlList(); return; }
   if(act==='wminus'){ item.width=Math.max(1,(item.width||3)-1); if(kmlLayers[id]) applyStyle(item); saveKmls(); renderKmlList(); return; }
   if(act==='wplus'){ item.width=Math.min(12,(item.width||3)+1); if(kmlLayers[id]) applyStyle(item); saveKmls(); renderKmlList(); return; }
-  if(act==='zoom'){ const go=()=>{ const l=kmlLayers[id]; if(l&&l.bounds){ map.fitBounds(l.bounds.pad(.1)); closeSheets(); } else toast('No geometry to zoom to'); };
+  if(act==='zoom'){ const go=()=>{ const l=kmlLayers[id]; if(l&&l.bounds){ setFollow(false); map.fitBounds(l.bounds.pad(.1)); closeSheets(); } else toast('No geometry to zoom to'); };
     if(kmlLayers[id]) go(); else loadKmlGeom(item).then(go); return; }
   if(act==='replace'){ replaceTargetId=id; $('#replaceIn').click(); return; }
   if(act==='dlimg'){ dlTargetLine=id; openSheet('sheetKey'); dlRefresh(); dlStoredRefresh(); return; }
