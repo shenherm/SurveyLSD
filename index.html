@@ -199,7 +199,7 @@
 <div id="readout">
   <div id="lsd">—</div>
   <div id="coords"><span class="lbl">LAT</span><b id="lat">—</b> &nbsp;<span class="lbl">LON</span><b id="lon">—</b> <span id="zlvl" class="z"></span></div>
-  <div id="elev"><b>—</b></div>
+  <div id="elev">Ground <b>—</b></div>
 </div>
 
 <div id="banner"></div>
@@ -404,7 +404,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09j';
+var swReg=null, APP_VERSION='2026.08.09k';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1043,12 +1043,12 @@ function fetchElev(la,lo){
 let crossGroundM=null, gpsAltM=null, gpsGroundM=null;
 function renderElev(){
   const el=$('#elev'); if(!el) return;
-  let h='<b>'+fmtFt(crossGroundM)+'</b>';
+  let h='Ground <b>'+fmtFt(crossGroundM)+'</b>';
   if(gpsAltM!=null){
-    h+=' <span class="esep">·</span> <b>'+fmtFt10(gpsAltM)+'</b>';
     const g=(gpsGroundM!=null)?gpsGroundM:(following?crossGroundM:null);
     if(g!=null){ const aglM=gpsAltM-g, hi=(aglM*M2FT>1000)?' hi':'';
       h+=' <span class="esep">·</span> <span class="agl'+hi+'">AGL <b>'+fmtFt10(aglM)+'</b></span>'; }
+    h+=' <span class="esep">·</span> ASL <b>'+fmtFt10(gpsAltM)+'</b>';
   }
   el.innerHTML=h;
 }
@@ -1086,8 +1086,7 @@ function mAddPoint(latlng){
   mMarkers.push(mk); mRedraw();
 }
 $('#bMeasure').onclick=()=>{ measuring=!measuring; $('#bMeasure').classList.toggle('on',measuring);
-  $('#measUnits').classList.toggle('show',measuring); syncMeasUnits();
-  mClear(); toast(measuring?'Tap two points, then drag either to fine-tune':'Measure off'); };
+  $('#measUnits').classList.toggle('show',measuring); syncMeasUnits(); mClear(); };
 function syncMeasUnits(){ document.querySelectorAll('#measUnits button').forEach(b=>b.classList.toggle('on',b.dataset.u===(settings.measUnit||'nm'))); }
 $('#measUnits').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return;
   settings.measUnit=b.dataset.u; saveSettings(); syncMeasUnits(); mRedraw(); });
