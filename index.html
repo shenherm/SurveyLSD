@@ -109,6 +109,7 @@
   .kml-item .swatch{width:14px;height:14px;border-radius:3px;flex:none;border:1px solid #0006}
   .kml-item .nm{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .kml-item button{background:none;border:1px solid var(--line);color:var(--muted);border-radius:7px;padding:6px 8px;font-size:11px;cursor:pointer}
+  .kml-item button.pindel{color:var(--warn);border-color:#5a2f2f}
   .toggle{width:42px;height:25px;border-radius:13px;background:var(--panel2);border:1px solid var(--line);position:relative;flex:none;cursor:pointer}
   .toggle b{position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:var(--muted);transition:all .15s}
   .toggle.on{background:#143a23;border-color:var(--good)}
@@ -348,13 +349,13 @@
 
 <div class="sheet" id="sheetPin">
   <button class="close" data-close>&times;</button>
-  <h2>Drop a labelled pin</h2>
+  <h2>Pins</h2>
   <div class="hint" id="pinWhere">At map centre.</div>
   <div class="row"><label>Label</label><input type="text" id="inPinLabel" placeholder="e.g. Valve site / photo target"></div>
-  <div class="row">
-    <button class="act amber" id="dropPin">Drop pin</button>
-    <button class="act ghost" id="clearPins">Clear all pins</button>
-  </div>
+  <div class="row"><button class="act amber" id="dropPin">Drop pin at centre</button></div>
+  <div class="kclbl">Saved pins</div>
+  <div id="pinList"></div>
+  <div class="row"><button class="act ghost" id="clearPins">Clear all pins</button></div>
 </div>
 
 <!-- File inputs live at top level (not inside a sheet) and are visually hidden rather than
@@ -404,7 +405,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09k';
+var swReg=null, APP_VERSION='2026.08.09l';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1226,20 +1227,46 @@ function savePins(){ try{ localStorage.setItem('pins',JSON.stringify(pins)); }ca
 function renderPins(){
   pinLayer.clearLayers();
   pins.forEach(p=>{
+    if(p.on===false) return;   // hidden via the pin manager
     L.marker([p.lat,p.lon],{icon:L.divIcon({className:'',
       html:'<div style="font-size:22px;line-height:1;transform:translate(-2px,-20px)">📍</div>',iconSize:[0,0]})}).addTo(pinLayer);
-    if(p.label) L.marker([p.lat,p.lon],{icon:L.divIcon({className:'pin-label',html:p.label,iconSize:null,iconAnchor:[-8,8]})}).addTo(pinLayer);
+    if(p.label) L.marker([p.lat,p.lon],{icon:L.divIcon({className:'pin-label',html:escapeHtml(p.label),iconSize:null,iconAnchor:[-8,8]})}).addTo(pinLayer);
   });
 }
+function renderPinList(){
+  const box=$('#pinList'); if(!box) return;
+  if(!pins.length){ box.innerHTML='<div class="empty">No pins yet — drop one at the map centre above.</div>'; return; }
+  let h='';
+  pins.forEach((p,i)=>{
+    const nm=p.label?escapeHtml(p.label):('<span style="color:var(--muted)">'+fmtLSD(latlonToLSD(p.lat,p.lon))+'</span>');
+    h+='<div class="kml-item">'
+      +'<div class="toggle'+(p.on!==false?' on':'')+'" data-act="tog" data-i="'+i+'"><b></b></div>'
+      +'<div class="nm">'+nm+'</div>'
+      +'<button data-act="go" data-i="'+i+'">Go to</button>'
+      +'<button class="pindel" data-act="del" data-i="'+i+'">Delete</button>'
+      +'</div>';
+  });
+  box.innerHTML=h;
+}
+$('#pinList').addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]'); if(!b) return;
+  const i=+b.getAttribute('data-i'), act=b.getAttribute('data-act');
+  if(isNaN(i)||!pins[i]) return;
+  if(act==='tog'){ pins[i].on=(pins[i].on===false); savePins(); renderPins(); renderPinList(); return; }
+  if(act==='go'){ setFollow(false); map.setView([pins[i].lat,pins[i].lon],16); closeSheets(); return; }
+  if(act==='del'){ if(!confirm('Delete pin "'+(pins[i].label||'unlabelled')+'"?')) return;
+    pins.splice(i,1); savePins(); renderPins(); renderPinList(); return; }
+});
 renderPins();
 $('#bPin').onclick=()=>{ const c=map.getCenter();
   $('#pinWhere').textContent='At centre: '+c.lat.toFixed(6)+', '+c.lng.toFixed(6)+'  ('+fmtLSD(latlonToLSD(c.lat,c.lng))+')';
-  $('#inPinLabel').value=''; openSheet('sheetPin'); };
+  $('#inPinLabel').value=''; renderPinList(); openSheet('sheetPin'); };
 $('#dropPin').onclick=()=>{ const c=map.getCenter();
-  pins.push({lat:c.lat,lon:c.lng,label:$('#inPinLabel').value.trim()});
-  savePins(); renderPins(); closeSheets(); toast('Pin dropped'); };
+  pins.push({lat:c.lat,lon:c.lng,label:$('#inPinLabel').value.trim(),on:true});
+  savePins(); renderPins(); renderPinList(); $('#inPinLabel').value=''; toast('Pin dropped'); };
 $('#clearPins').onclick=()=>{ if(!pins.length){toast('No pins');return;}
-  pins=[]; savePins(); renderPins(); closeSheets(); toast('Pins cleared'); };
+  if(!confirm('Delete all '+pins.length+' pins? This cannot be undone.')) return;
+  pins=[]; savePins(); renderPins(); renderPinList(); toast('Pins cleared'); };
 
 /* ---------- KML ---------- */
 /* ============================================================
