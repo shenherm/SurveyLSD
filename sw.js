@@ -4,7 +4,7 @@
    the app), not here, so they work in both the PWA and the native iPad app.
    This worker only makes the PWA's app SHELL available offline + caches elevation.
    Bump SHELL_VER when the shell, libraries or icons change. */
-var SHELL_VER = 'v13';
+var SHELL_VER = 'v14';
 var DATA_VER  = 'v1';
 var SHELL = 'surveylsd-shell-' + SHELL_VER;   // app shell + survey grids (cache-first)
 var DATA  = 'surveylsd-data-'  + DATA_VER;    // elevation lookups (network-first, cache fallback)
@@ -22,6 +22,12 @@ var SHELL_CORE = [
   './vendor/leaflet/images/marker-icon-2x.png',
   './vendor/leaflet/images/marker-shadow.png',
   './vendor/jszip.min.js',
+  './fonts/plex-sans-400.woff2',
+  './fonts/plex-sans-600.woff2',
+  './fonts/plex-sans-700.woff2',
+  './fonts/plex-mono-400.woff2',
+  './fonts/plex-mono-600.woff2',
+  './fonts/plex-mono-700.woff2',
   './icon-192.png',
   './icon-512.png',
   './apple-touch-icon.png',

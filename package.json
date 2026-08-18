@@ -4,7 +4,7 @@
   "description": "LSD Patrol Nav — native iOS wrapper (Capacitor) around the web app",
   "private": true,
   "scripts": {
-    "copy:web": "rm -rf www && mkdir www && cp -R index.html sw.js manifest.webmanifest vendor lines ats_grid.bin sk_grid.bin dem.bin *.png www/ 2>/dev/null; echo 'web assets copied to www/ (dem.bin optional)'",
+    "copy:web": "rm -rf www && mkdir www && cp -R index.html sw.js manifest.webmanifest vendor fonts lines ats_grid.bin sk_grid.bin dem.bin *.png www/ 2>/dev/null; echo 'web assets copied to www/ (dem.bin optional)'",
     "sync": "npx cap sync ios",
     "open": "npx cap open ios"
   },
