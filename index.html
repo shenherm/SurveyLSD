@@ -406,7 +406,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09n';
+var swReg=null, APP_VERSION='2026.08.09o';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1269,9 +1269,34 @@ $('#pinList').addEventListener('click',e=>{
     pins.splice(i,1); savePins(); renderPins(); renderPinList(); return; }
 });
 renderPins();
-$('#bPin').onclick=()=>{ const c=map.getCenter();
-  $('#pinWhere').textContent='At centre: '+c.lat.toFixed(6)+', '+c.lng.toFixed(6)+'  ('+fmtLSD(latlonToLSD(c.lat,c.lng))+')';
-  $('#inPinLabel').value=''; renderPinList(); openSheet('sheetPin'); };
+/* Nearest road / place name for a point (online only; OSM Nominatim, no key).
+   Used to pre-fill a pin label so observations can be reported by location. */
+function pinReverseName(lat,lon){
+  const url='https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=16&lat='+lat.toFixed(6)+'&lon='+lon.toFixed(6);
+  return fetch(url).then(r=>r.ok?r.json():null).then(j=>{
+    if(!j||!j.address) return null; const a=j.address;
+    const road=a.road||a.pedestrian||a.footway||a.path||a.cycleway;
+    const place=a.hamlet||a.village||a.town||a.city||a.municipality;
+    if(road&&place) return road+', '+place;
+    return road||place||null;
+  }).catch(()=>null);
+}
+$('#bPin').onclick=()=>{ const c=map.getCenter(), lsd=fmtLSD(latlonToLSD(c.lat,c.lng));
+  const where='At centre: '+c.lat.toFixed(6)+', '+c.lng.toFixed(6)+'  ('+lsd+')';
+  $('#pinWhere').textContent=where;
+  const inp=$('#inPinLabel'); inp.value=''; inp.placeholder='e.g. Valve site / photo target';
+  renderPinList(); openSheet('sheetPin');
+  if(navigator.onLine!==false){
+    inp.placeholder='Finding nearest road / place…';
+    const clat=c.lat, clon=c.lng;
+    pinReverseName(clat,clon).then(name=>{
+      const el=$('#inPinLabel'); if(el) el.placeholder='e.g. Valve site / photo target';
+      if(name && $('#sheetPin').classList.contains('open') && el && !el.value){
+        el.value=name; $('#pinWhere').textContent=where+'  ·  near '+name;
+      }
+    });
+  }
+};
 $('#dropPin').onclick=()=>{ const c=map.getCenter();
   pins.push({lat:c.lat,lon:c.lng,label:$('#inPinLabel').value.trim(),on:true});
   savePins(); renderPins(); renderPinList(); $('#inPinLabel').value=''; toast('Pin dropped'); };
