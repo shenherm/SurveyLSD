@@ -221,6 +221,7 @@
   <div class="setrow"><div class="setl"><div class="setname">Aircraft icon</div><div class="sethint">Orange Cessna that rotates to your track. Off shows a green dot.</div></div><button class="tgl" id="tgIcon" aria-label="Aircraft icon"></button></div>
   <div class="setrow"><div class="setl"><div class="setname">Track vector</div><div class="sethint">Line ahead of you showing where you'll be in one minute.</div></div><button class="tgl" id="tgVec" aria-label="Track vector"></button></div>
   <div class="setrow"><div class="setl"><div class="setname">Range rings</div><div class="sethint">Distance rings in nautical miles, centred on you — for judging distance to targets.</div></div><button class="tgl" id="tgRings" aria-label="Range rings"></button></div>
+  <div class="setrow"><div class="setl"><div class="setname">Roads &amp; place names</div><div class="sethint">Overlay road, town and village names on the map — for reporting observations by location. Download a line to keep them offline.</div></div><button class="tgl" id="tgRoads" aria-label="Roads and place names"></button></div>
   <div style="border-top:1px solid var(--line);margin:16px 0 12px"></div>
   <div class="row"><button class="act ghost" id="openKey">Imagery &amp; downloads</button></div>
 </div>
@@ -405,7 +406,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09m';
+var swReg=null, APP_VERSION='2026.08.09n';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -575,6 +576,16 @@ const s2=offlineLayer('https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-'+S2_YEA
   {maxZoom:21,maxNativeZoom:14,attribution:s2attr,updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2,layerId:'s2'});
 
 const osm=offlineLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap',updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2,layerId:'osm'});
+
+// ---- Roads & place-name reference overlay (transparent, over imagery / under the lines) ----
+// Same Esri provider + key as the imagery, so it caches through the same offline pipeline.
+function refUrl(svc){ return 'https://ibasemaps-api.arcgis.com/arcgis/rest/services/Reference/'+svc+'/MapServer/tile/{z}/{y}/{x}'+(esriKey?('?token='+encodeURIComponent(esriKey)):''); }
+if(!map.getPane('refPane')){ map.createPane('refPane'); map.getPane('refPane').style.zIndex='300'; map.getPane('refPane').style.pointerEvents='none'; }
+const refTrans=offlineLayer(refUrl('World_Transportation'),{maxZoom:21,maxNativeZoom:17,pane:'refPane',layerId:'reftrans',updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2});
+const refPlace=offlineLayer(refUrl('World_Boundaries_and_Places'),{maxZoom:21,maxNativeZoom:17,pane:'refPane',layerId:'refplace',updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2});
+const refLayer=L.layerGroup([refTrans,refPlace]);
+const REF_LAYERS=[refTrans,refPlace];
+const REF_DL_ZMAX=15;   // cache labels up to z15 (overzoomed above) to keep downloads light
 
 // One base layer at a time for speed (old iPads). Esri online by default;
 // switch to Sentinel-2 (the offline base) or OSM from the layers menu.
@@ -797,7 +808,7 @@ function startTracking(){
 }
 const GPS_DR_MAX=2.5, GPS_TAU=0.14;   // seconds: dead-reckon cap, and easing time-constant
 /* ---------- user settings (persisted) ---------- */
-const SETTINGS_DEFAULT={gpsIcon:'plane', trackVector:true, rangeRings:false, measUnit:'nm'};
+const SETTINGS_DEFAULT={gpsIcon:'plane', trackVector:true, rangeRings:false, measUnit:'nm', roads:false};
 let settings=Object.assign({},SETTINGS_DEFAULT);
 try{ settings=Object.assign(settings, JSON.parse(localStorage.getItem('settings')||'{}')); }catch(e){}
 function saveSettings(){ try{ localStorage.setItem('settings',JSON.stringify(settings)); }catch(e){} }
@@ -1641,12 +1652,16 @@ $('#kmlList').addEventListener('click',e=>{
 $('#bKml').onclick=()=>{ renderKmlList(); openSheet('sheetKml'); };
 function syncSettingsUI(){ $('#tgIcon').classList.toggle('on',settings.gpsIcon==='plane');
   $('#tgVec').classList.toggle('on',!!settings.trackVector);
-  $('#tgRings').classList.toggle('on',!!settings.rangeRings); }
+  $('#tgRings').classList.toggle('on',!!settings.rangeRings);
+  $('#tgRoads').classList.toggle('on',!!settings.roads); }
+function applyRoads(){ if(settings.roads){ if(!map.hasLayer(refLayer)) refLayer.addTo(map); } else { if(map.hasLayer(refLayer)) map.removeLayer(refLayer); } }
 $('#bSettings').onclick=()=>{ syncSettingsUI(); openSheet('sheetSettings'); };
 $('#openKey').onclick=()=>{ openSheet('sheetKey'); dlRefresh(); dlStoredRefresh(); };
 $('#tgIcon').onclick=()=>{ settings.gpsIcon=(settings.gpsIcon==='plane'?'dot':'plane'); saveSettings(); syncSettingsUI(); if(gpsMarker) buildGpsDisplay(); };
 $('#tgVec').onclick=()=>{ settings.trackVector=!settings.trackVector; saveSettings(); syncSettingsUI(); if(gpsMarker) buildGpsDisplay(); };
 $('#tgRings').onclick=()=>{ settings.rangeRings=!settings.rangeRings; saveSettings(); syncSettingsUI(); if(gpsMarker) buildGpsDisplay(); };
+$('#tgRoads').onclick=()=>{ settings.roads=!settings.roads; saveSettings(); syncSettingsUI(); applyRoads(); };
+applyRoads();
 
 /* ---------- One-click offline imagery download for the current view ---------- */
 const DL_TILE_CAP=400000;            // absolute backstop (~9GB); the practical limit is the device's free storage, checked live
@@ -1873,6 +1888,36 @@ async function dlStoredRefresh(){
   $('#dlStored').textContent=txt;
 }
 
+/* Download a list of {url,key} tiles into the offline store with a worker pool.
+   Shares dlCancel/dlQuota with the main downloads so Cancel/quota behave the same. */
+async function fetchTileSet(jobs, onProg){
+  let done=0, saved=0, failed=0, idx=0;
+  async function worker(){
+    while(idx<jobs.length){ if(dlCancel) return;
+      const j=jobs[idx++];
+      try{ if(await tileHas(j.key)) saved++;
+        else{ const resp=await fetch(j.url); if(resp.ok){ await tilePut(j.key, await resp.blob()); saved++; } else failed++; } }
+      catch(e){ if(e&&(e.name==='QuotaExceededError'||e.code===22||(e.message&&/quota/i.test(e.message)))){ dlQuota=true; dlCancel=true; return; } failed++; }
+      done++; if(onProg) onProg(done, jobs.length, saved, failed);
+    }
+  }
+  const CONC=LOWPWR?4:8, ws=[]; for(let i=0;i<CONC;i++) ws.push(worker());
+  await Promise.all(ws);
+  return {saved, failed, done};
+}
+// Build reference (roads+places) download jobs / ownership keys for a set of imagery tile coords.
+function refJobsFor(coords){ const jobs=[];
+  for(const rl of REF_LAYERS){ const tmpl=rl._url, rid=rl.options.layerId;
+    for(const t of coords){ if(t.z>REF_DL_ZMAX) continue;
+      jobs.push({url:dlTileUrl(tmpl,null,t), key:rid+'/'+t.z+'/'+t.x+'/'+t.y}); } }
+  return jobs;
+}
+function refKeysFor(coords){ const ks=[];
+  for(const rl of REF_LAYERS){ const rid=rl.options.layerId;
+    for(const t of coords){ if(t.z<=REF_DL_ZMAX) ks.push(rid+'/'+t.z+'/'+t.x+'/'+t.y); } }
+  return ks;
+}
+
 async function dlRun(){
   if(dlBusy) return;
   const r=dlZHi(), mode=dlModeSel();
@@ -1914,6 +1959,18 @@ async function dlRun(){
   const CONC=LOWPWR?4:8, ws=[]; for(let i=0;i<CONC;i++) ws.push(worker());
   await Promise.all(ws); prog(true);
 
+  // ---- phase 1b: road & place-name labels for the same corridor (offline reference) ----
+  let refSaved=0;
+  if(!dlCancel){
+    const refJobs=refJobsFor(tiles);
+    if(refJobs.length){
+      bar.style.width='0%'; ptxt.textContent='Road & place labels…';
+      const rr=await fetchTileSet(refJobs, function(d,t){ const pct=t?Math.round(d/t*100):100; bar.style.width=pct+'%';
+        ptxt.textContent='Road & place labels '+d.toLocaleString()+' / '+t.toLocaleString()+' ('+pct+'%)'; });
+      refSaved=rr.saved;
+    }
+  }
+
   // ---- phase 2: ground elevation along the same area (best-effort; imagery already saved) ----
   let elevSaved=0, elevTooBig=false, elevErr=false;
   if(!dlCancel){
@@ -1931,7 +1988,7 @@ async function dlRun(){
   // ---- record who owns this corridor's tiles, so deleting one line keeps tiles shared by others ----
   const ownerId=(mode==='corridor'&&dlTargetLine)?dlTargetLine:(mode==='box'?'__box__':null);
   if(ownerId){
-    const keys=tiles.map(function(t){ return layerId+'/'+t.z+'/'+t.x+'/'+t.y; });
+    const keys=tiles.map(function(t){ return layerId+'/'+t.z+'/'+t.x+'/'+t.y; }).concat(refKeysFor(tiles));
     if(ownerId==='__box__'){ const ex=await imgIdxGet('__box__'), set={}; if(ex&&ex.keys) for(let i=0;i<ex.keys.length;i++) set[ex.keys[i]]=1;
       for(let i=0;i<keys.length;i++) set[keys[i]]=1; await imgIdxPut('__box__',{layerId:layerId,keys:Object.keys(set),ts:Date.now()}); }
     else await imgIdxPut(ownerId,{layerId:layerId,keys:keys,radius:dlRadiusSel(),zHi:r.zHi,ts:Date.now()});
@@ -1942,6 +1999,7 @@ async function dlRun(){
   if(dlQuota) toast('Device storage full — saved '+saved.toLocaleString()+' tiles; free space or clear saved imagery');
   else if(dlCancel) toast('Download stopped — '+saved.toLocaleString()+' tiles saved');
   else { let m='Saved offline — '+saved.toLocaleString()+' tiles'+(failed?(', '+failed+' failed'):'');
+    if(refSaved) m+=' · '+refSaved.toLocaleString()+' label tiles';
     if(elevSaved) m+=' · '+elevSaved.toLocaleString()+' elevation pts';
     else if(elevTooBig) m+=' · elevation skipped (area too large)';
     else if(elevErr) m+=' · elevation unavailable';
@@ -1973,7 +2031,7 @@ async function dlRunAll(){
     await corridorTiles(rad,r.zLo,r.zHi); const t=corridorList();
     const keys=new Array(t.length);
     for(let i=0;i<t.length;i++){ const tt=t[i], k=layerId+'/'+tt.z+'/'+tt.x+'/'+tt.y; keys[i]=k; if(!uniq.has(k)) uniq.set(k,tt); }
-    perLine.push({id:ln.id, keys:keys});
+    perLine.push({id:ln.id, keys:keys.concat(refKeysFor(t))});
     ptxt.textContent='Planning… '+perLine.length+' / '+lines.length+' lines';
   }
   const list=Array.from(uniq.values()), total=list.length;
@@ -1998,6 +2056,13 @@ async function dlRunAll(){
     catch(e){ if(e&&(e.name==='QuotaExceededError'||e.code===22||(e.message&&/quota/i.test(e.message)))){ dlQuota=true; dlCancel=true; return; } failed++; }
     done++; prog(done===total); } }
   const CONC=LOWPWR?4:8, ws=[]; for(let i=0;i<CONC;i++) ws.push(worker()); await Promise.all(ws); prog(true);
+  // road & place labels for the whole set (unique low-zoom tiles, both reference layers)
+  if(!dlCancel && !dlQuota){
+    const refJobs=refJobsFor(list);
+    if(refJobs.length){ bar.style.width='0%';
+      await fetchTileSet(refJobs, function(d,tt){ const pct=tt?Math.round(d/tt*100):100; bar.style.width=pct+'%';
+        ptxt.textContent='Road & place labels '+d.toLocaleString()+' / '+tt.toLocaleString()+' ('+pct+'%)'; }); }
+  }
   for(const pl of perLine){ try{ await imgIdxPut(pl.id,{layerId:layerId,keys:pl.keys,radius:rad,zHi:r.zHi,ts:Date.now()}); }catch(e){} }
   let elev=0, ei=0;
   if(!dlQuota){
