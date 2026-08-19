@@ -406,7 +406,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09p';
+var swReg=null, APP_VERSION='2026.08.09q';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -579,12 +579,14 @@ const osm=offlineLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{max
 
 // ---- Roads & place-name reference overlay (transparent, over imagery / under the lines) ----
 // Same Esri provider + key as the imagery, so it caches through the same offline pipeline.
-function refUrl(svc){ return 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/'+svc+'/MapServer/tile/{z}/{y}/{x}'; }
+// Transparent OSM label overlay (road names + towns/villages). CORS-enabled, so the
+// fetch-based tile loader can read it — Esri's keyed endpoint doesn't expose the reference
+// layers to basemap keys, and its keyless ones block cross-origin reads.
+function refUrl(){ return 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png'; }
 if(!map.getPane('refPane')){ map.createPane('refPane'); map.getPane('refPane').style.zIndex='300'; map.getPane('refPane').style.pointerEvents='none'; }
-const refTrans=offlineLayer(refUrl('World_Transportation'),{maxZoom:21,maxNativeZoom:17,pane:'refPane',layerId:'reftrans',updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2});
-const refPlace=offlineLayer(refUrl('World_Boundaries_and_Places'),{maxZoom:21,maxNativeZoom:17,pane:'refPane',layerId:'refplace',updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2});
-const refLayer=L.layerGroup([refTrans,refPlace]);
-const REF_LAYERS=[refTrans,refPlace];
+const refLabels=offlineLayer(refUrl(),{maxZoom:21,maxNativeZoom:16,pane:'refPane',layerId:'reflabels',subdomains:'abcd',attribution:'&copy; OpenStreetMap, &copy; CARTO',updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2});
+const refLayer=L.layerGroup([refLabels]);
+const REF_LAYERS=[refLabels];
 const REF_DL_ZMAX=15;   // cache labels up to z15 (overzoomed above) to keep downloads light
 
 // One base layer at a time for speed (old iPads). Esri online by default;
@@ -1689,7 +1691,7 @@ $('#tgRoads').onclick=()=>{ settings.roads=!settings.roads; saveSettings(); sync
   if(settings.roads){   // quick reachability check so we can see why labels do/don't load
     const z=10,n=1<<z,lr=53*Math.PI/180;
     const t={z:z,x:Math.floor((-114+180)/360*n),y:Math.floor((1-Math.log(Math.tan(lr)+1/Math.cos(lr))/Math.PI)/2*n)};
-    fetch(dlTileUrl(refTrans._url,null,t)).then(r=>toast('Road labels: '+(r.ok?('connected \u2713'):('server said '+r.status)))).catch(e=>toast('Road labels blocked: '+((e&&e.message)||'CORS/network'))); }
+    fetch(dlTileUrl(refLabels._url,'abcd',t)).then(r=>toast('Road labels: '+(r.ok?('connected \u2713'):('server said '+r.status)))).catch(e=>toast('Road labels blocked: '+((e&&e.message)||'CORS/network'))); }
 };
 applyRoads();
 
