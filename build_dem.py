@@ -1,64 +1,40 @@
 #!/usr/bin/env python3
 """
 build_dem.py  --  Build dem.bin (offline ground-elevation grid) for LSD Patrol Nav.
-RESUMABLE: saves progress to your Google Drive after every batch, so if Colab
-disconnects you just Run all again and it continues where it stopped.
 
-It reads the pipeline lines LIVE from the app, samples ground elevation ALONG your
-patrol corridors from the free Open-Meteo API (same source the app uses online, so
-offline matches), and writes a compact "DEM1" file the app loads as dem.bin. Once dem.bin
-is in the repo, ground/AGL work fully offline everywhere you patrol -- forever.
+FAST + NO RATE LIMITS. Instead of asking an elevation API for one point at a time (which
+gets rate-limited after ~5,000 points), this downloads a few hundred free public terrain
+tiles from AWS Open Data (no key, no sign-up, no limit) and reads elevation from them
+locally. The whole job is one clean run of a few minutes -- no restarting.
+
+It reads the pipeline lines LIVE from the app, samples ground elevation ALONG your patrol
+corridors, and writes a compact "DEM1" file the app loads as dem.bin. Once dem.bin is in
+the repo, ground/AGL work fully offline everywhere you patrol -- forever.
 
 HOW TO USE (Google Colab)
 -------------------------
 1.  https://colab.research.google.com  ->  File -> New notebook.
 2.  Paste this whole file into a cell.
-3.  Runtime -> Run all.  It asks to connect Google Drive (click Allow) -- that's where
-    progress is saved so nothing is ever lost.
-4.  It samples with a progress readout. If Colab disconnects or you close it, just open it
-    again and Runtime -> Run all -- it resumes. Repeat until it prints  *** COMPLETE ***
-    and downloads  dem.bin.
+3.  Runtime -> Run all.  It downloads ~700 tiles and samples (progress shown), ~3-5 min.
+4.  When it finishes it downloads  dem.bin  to your computer.
 5.  Send that dem.bin back in the chat -- it gets committed and the app picks it up.
 
-Nothing to configure. Re-run any time (e.g. after adding lines): delete the progress file
-noted below to start fresh, or just Run all to top it up.
+Nothing to configure. If tiles ever fail, just Run all again.
 """
 
-import struct, time, math, sys, os, json, pickle, urllib.request
+import struct, time, math, sys, os, json, io, urllib.request
+import numpy as np
+from PIL import Image
 
 # ----------------------------------------------------------------- configuration
 LINES_BASE = "https://raw.githubusercontent.com/shenherm/SurveyLSD/main/lines"
 RADIUS_KM  = 3.0        # cover this far each side of every line (>= app's 2 km + margin)
-CELL_DEG   = 0.004      # grid spacing (~445 m). Fine enough for AGL.
+CELL_DEG   = 0.004      # output grid spacing (~445 m) -- plenty for AGL
 BLOCK_DEG  = 0.1        # storage block size (keeps the file compact)
-BATCH      = 100        # Open-Meteo points per request
-PAUSE      = 0.3        # seconds between requests (stay under the free rate limit)
-SAVE_EVERY = 20         # save progress to Drive every N batches
+ZOOM       = 11         # terrain-tile zoom (~46 m/pixel -- finer than the output grid)
+TILE_URL   = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
 OUT        = "dem.bin"
 ND         = -32768
-
-# --------------------------------------------------- connect Google Drive (resume store)
-WORKDIR = "."
-try:
-    from google.colab import drive
-    drive.mount("/content/drive")
-    WORKDIR = "/content/drive/MyDrive/lsd_dem"
-    os.makedirs(WORKDIR, exist_ok=True)
-    print("Progress will be saved in Google Drive -> MyDrive/lsd_dem/")
-except Exception:
-    print("(Not on Colab / no Drive -- progress saved in the working folder.)")
-PROG = os.path.join(WORKDIR, "dem_progress.pkl")
-
-def load_progress():
-    if os.path.exists(PROG):
-        try:
-            with open(PROG, "rb") as f: return pickle.load(f)
-        except Exception: pass
-    return {}
-def save_progress(done):
-    tmp = PROG + ".tmp"
-    with open(tmp, "wb") as f: pickle.dump(done, f, protocol=2)
-    os.replace(tmp, PROG)          # atomic: never leaves a half-written file
 
 def fetch_json(url, tries=5):
     for a in range(tries):
@@ -79,7 +55,7 @@ for L in man["lines"]:
         if len(ln.get("p", [])) >= 1: segs.append(ln["p"])
 print(f"  {len(man['lines'])} lines, {len(segs)} segments")
 
-# --------------------------------------- 2) which grid cells the corridors need
+# --------------------------------------- 2) which output cells the corridors need
 CELL = CELL_DEG
 BC   = int(round(BLOCK_DEG / CELL))
 cells = set()
@@ -102,61 +78,77 @@ for p in segs:
             for s in range(1, n): f=s/n; stamp(la0+(la-la0)*f, lo0+(lo-lo0)*f)
 print(f"  {len(cells):,} cells needed")
 
-# ---------------------------------------------- 3) sample remaining cells (resumable)
-done = load_progress()                    # {(gr,gc): elev_int}
-done = {k:v for k,v in done.items() if k in cells}   # keep only relevant
-need = [c for c in cells if c not in done]
-print(f"  already have {len(done):,}; {len(need):,} to go "
-      f"(~{math.ceil(len(need)/BATCH):,} requests, ~{len(need)/BATCH*PAUSE/60:.0f} min)")
+# --------------------------------- 3) which terrain tiles cover those cells
+NP = (2**ZOOM) * 256
+def to_px(lat, lon):
+    x = (lon + 180.0)/360.0 * NP
+    s = math.sin(math.radians(lat))
+    y = (0.5 - math.log((1+s)/(1-s))/(4*math.pi)) * NP
+    return x, y
 
-def elev_batch(cs, tries=5):
-    lats = [gr*CELL for gr,gc in cs]; lons = [gc*CELL for gr,gc in cs]
-    url = ("https://api.open-meteo.com/v1/elevation?latitude="
-           + ",".join(f"{v:.5f}" for v in lats)
-           + "&longitude=" + ",".join(f"{v:.5f}" for v in lons))
+samples = []            # (gr, gc, gx, gy)
+tiles_needed = set()
+for (gr, gc) in cells:
+    gx, gy = to_px(gr*CELL, gc*CELL)
+    samples.append((gr, gc, gx, gy))
+    px0, py0 = int(math.floor(gx)), int(math.floor(gy))
+    for dx in (0,1):
+        for dy in (0,1):
+            tiles_needed.add(((px0+dx)//256, (py0+dy)//256))
+tiles_needed = sorted(tiles_needed)
+print(f"  {len(tiles_needed)} terrain tiles to fetch (~{len(tiles_needed)*20/1024:.1f} MB)\n")
+
+# --------------------------------- 4) download + decode tiles (terrarium RGB)
+def fetch_tile(tx, ty, tries=5):
+    url = TILE_URL.format(z=ZOOM, x=tx, y=ty)
     for a in range(tries):
         try:
-            with urllib.request.urlopen(url, timeout=40) as r:
-                e = json.loads(r.read().decode("utf-8")).get("elevation")
-                if e: return e
-        except Exception: pass
-        time.sleep(1.5*(a+1))            # back off on rate-limit
+            with urllib.request.urlopen(url, timeout=30) as r:
+                img = Image.open(io.BytesIO(r.read())).convert("RGB")
+                arr = np.asarray(img, dtype=np.float64)
+                return (arr[:,:,0]*256.0 + arr[:,:,1] + arr[:,:,2]/256.0 - 32768.0).astype(np.float32)
+        except Exception:
+            time.sleep(1.5*(a+1))
     return None
 
-t0 = time.time(); nb = 0
-for i in range(0, len(need), BATCH):
-    chunk = need[i:i+BATCH]
-    ev = elev_batch(chunk)
-    if ev:
-        for k,(gr,gc) in enumerate(chunk):
-            v = ev[k] if k < len(ev) else None
-            if v is not None and math.isfinite(v):
-                done[(gr,gc)] = max(-32000, min(32000, int(round(v))))
-    nb += 1
-    if nb % SAVE_EVERY == 0: save_progress(done)
-    if nb % 20 == 0 or i+BATCH >= len(need):
-        got = len(done)
-        print(f"  {got:,}/{len(cells):,} cells ({got*100//len(cells)}%)  "
-              f"{time.time()-t0:.0f}s this run")
-    time.sleep(PAUSE)
-save_progress(done)
+tiles = {}; miss_t = 0; t0 = time.time()
+for i,(tx,ty) in enumerate(tiles_needed):
+    a = fetch_tile(tx, ty)
+    if a is not None: tiles[(tx,ty)] = a
+    else: miss_t += 1
+    if i % 50 == 0 or i == len(tiles_needed)-1:
+        print(f"  tiles {i+1}/{len(tiles_needed)}  ({time.time()-t0:.0f}s)")
+if miss_t: print(f"  ({miss_t} tiles failed -- Run all again to retry if AGL has gaps)")
 
-# ---------------------------------------------------------- 4) finished? build dem.bin
-remaining = len([c for c in cells if c not in done])
-if remaining > len(cells)*0.02:          # >2% still missing -> another pass needed
-    print(f"\nStopped with {remaining:,} cells left (rate limit / disconnect). "
-          f"Run all again to continue -- progress is saved.")
-    sys.exit(0)
+# --------------------------------- 5) sample every cell from the tiles (local, instant)
+def px_elev(px, py):
+    t = tiles.get((px//256, py//256))
+    if t is None: return None
+    return float(t[py%256, px%256])
 
-print(f"\nAll cells sampled. Building {OUT} ...")
-region = {}                              # (bR,bC) -> grid list
+done = {}
+for (gr, gc, gx, gy) in samples:
+    px0, py0 = int(math.floor(gx)), int(math.floor(gy)); fx, fy = gx-px0, gy-py0
+    v00, v10 = px_elev(px0,py0),   px_elev(px0+1,py0)
+    v01, v11 = px_elev(px0,py0+1), px_elev(px0+1,py0+1)
+    if None in (v00,v10,v01,v11):
+        got = [v for v in (v00,v10,v01,v11) if v is not None]
+        if not got: continue
+        e = got[0]
+    else:
+        e = (v00*(1-fx)+v10*fx)*(1-fy) + (v01*(1-fx)+v11*fx)*fy
+    done[(gr,gc)] = max(-32000, min(32000, int(round(e))))
+print(f"\nSampled {len(done):,}/{len(cells):,} cells")
+
+# --------------------------------- 6) write dem.bin (DEM1, block regions)
+region = {}
 def grid(bkey):
     if bkey not in region: region[bkey] = [ND]*((BC+1)*(BC+1))
     return region[bkey]
 def put(gr, gc, v):
     bR, bC = gr//BC, gc//BC
     grid((bR,bC))[(gr-bR*BC)*(BC+1)+(gc-bC*BC)] = v
-    if gr-bR*BC == 0: grid((bR-1,bC))[BC*(BC+1)+(gc-bC*BC)] = v          # overlap edges
+    if gr-bR*BC == 0: grid((bR-1,bC))[BC*(BC+1)+(gc-bC*BC)] = v
     if gc-bC*BC == 0: grid((bR,bC-1))[(gr-bR*BC)*(BC+1)+BC] = v
     if gr-bR*BC == 0 and gc-bC*BC == 0: grid((bR-1,bC-1))[BC*(BC+1)+BC] = v
 for (gr,gc),v in done.items(): put(gr,gc,v)
