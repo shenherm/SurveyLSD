@@ -178,12 +178,17 @@
       b.appendChild(document.createTextNode(msg+'\n'));
     }catch(e){}
   }
-  window.onerror=function(m,src,line,col){ show('JS error: '+m+(line?(' @ line '+line+':'+col):'')); return false; };
+  function benign(m){ m=String(m||''); return /load failed|networkerror|failed to fetch|network connection|network request failed|cancell?ed|the operation was aborted|importscripts|^script error\.?$/i.test(m); }
+  window.onerror=function(m,src,line,col){ if(benign(m)) return false; show('JS error: '+m+(line?(' @ line '+line+':'+col):'')); return false; };
   window.addEventListener('error',function(e){
-    if(e&&e.target&&e.target.tagName==='SCRIPT'&&e.target.src) show('Failed to load script: '+e.target.src);
+    if(e&&e.target&&e.target.tagName==='SCRIPT'&&e.target.src){ var s=e.target.src;
+      if(s.indexOf('://')>=0 && s.indexOf(location.host)<0) return;   // cross-origin/CDN scripts have local fallbacks
+      show('Failed to load script: '+s); }
   },true);
   window.addEventListener('unhandledrejection',function(e){
-    var r=e&&e.reason; show('Promise error: '+((r&&r.message)||r||'unknown'));
+    var r=e&&e.reason, m=(r&&r.message)||String(r||'');
+    if(benign(m)) return;   // ignore expected offline network hiccups (SW update checks, tile/geocode fetches)
+    show('Promise error: '+(m||'unknown'));
   });
 })();
 </script>
@@ -406,14 +411,14 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09q';
+var swReg=null, APP_VERSION='2026.08.09r';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
   var say=function(m){ if(t){ t.textContent=m; t.classList.add('show'); setTimeout(function(){ t.classList.remove('show'); },2400); } };
   if(navigator.onLine===false){ say('Connect to the internet to update'); return; }
   say('Getting the latest version… your downloads are kept');
-  try{ if(swReg) swReg.update(); }catch(e){}
+  try{ if(swReg){ var pu=swReg.update(); if(pu&&pu.catch) pu.catch(function(){}); } }catch(e){}
   setTimeout(function(){ location.reload(); }, 650);   // reload pulls the newest app; IndexedDB downloads stay put
 }
 if('serviceWorker' in navigator && (location.protocol==='https:'||location.protocol==='http:')){
@@ -429,7 +434,7 @@ if('serviceWorker' in navigator && (location.protocol==='https:'||location.proto
         });
       });
     }).catch(function(){});
-    var chk=function(){ if(swReg){ try{ swReg.update(); }catch(e){} } };
+    var chk=function(){ if(swReg && navigator.onLine!==false){ try{ var pc=swReg.update(); if(pc&&pc.catch) pc.catch(function(){}); }catch(e){} } };
     setInterval(chk, 60*60*1000);                                   // hourly
     document.addEventListener('visibilitychange',function(){ if(!document.hidden) chk(); });  // and when returning to the app
   });
