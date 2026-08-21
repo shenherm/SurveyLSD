@@ -411,7 +411,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09r';
+var swReg=null, APP_VERSION='2026.08.09s';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -909,6 +909,7 @@ function onFix(pos){
 }
 /* Smoothly ease the marker toward the fix dead-reckoned to 'now' by its velocity, every
    frame — so it glides continuously instead of snapping once per GPS update. */
+let gpsZooming=false;
 function gpsStep(){
   gpsRaf=0;
   if(!gpsAnchor||!gpsMarker||!gpsDisp) return;
@@ -918,14 +919,17 @@ function gpsStep(){
   const tgtLat=gpsAnchor.lat+gpsAnchor.vlat*drt, tgtLon=gpsAnchor.lon+gpsAnchor.vlon*drt;
   const a=1-Math.exp(-fdt/GPS_TAU);
   gpsDisp.lat+=(tgtLat-gpsDisp.lat)*a; gpsDisp.lon+=(tgtLon-gpsDisp.lon)*a;
-  const ll=[gpsDisp.lat,gpsDisp.lon];
   updateTrack();
-  gpsMarker.setLatLng(ll);
-  if(settings.gpsIcon==='plane'){ if(!gpsPlaneEl&&gpsMarker._icon) gpsPlaneEl=gpsMarker._icon.querySelector('.planeRot');
-    if(gpsPlaneEl) gpsPlaneEl.style.transform='rotate('+gpsTrack.toFixed(1)+'deg)'; }
-  if(gpsCircle){ gpsCircle.setLatLng(ll); if(gpsCircle.getRadius()!==gpsAcc) gpsCircle.setRadius(gpsAcc||30); }
-  updateGpsGraphics();
-  if(following) map.panTo(ll,{animate:false});
+  if(!gpsZooming){   // during a zoom animation Leaflet scales the canvas overlays itself; our per-frame
+                     // setLatLng would reproject them to the target zoom and double-scale. Resync at zoomend.
+    const ll=[gpsDisp.lat,gpsDisp.lon];
+    gpsMarker.setLatLng(ll);
+    if(settings.gpsIcon==='plane'){ if(!gpsPlaneEl&&gpsMarker._icon) gpsPlaneEl=gpsMarker._icon.querySelector('.planeRot');
+      if(gpsPlaneEl) gpsPlaneEl.style.transform='rotate('+gpsTrack.toFixed(1)+'deg)'; }
+    if(gpsCircle){ gpsCircle.setLatLng(ll); if(gpsCircle.getRadius()!==gpsAcc) gpsCircle.setRadius(gpsAcc||30); }
+    updateGpsGraphics();
+    if(following) map.panTo(ll,{animate:false});
+  }
   const moving=(Math.abs(gpsAnchor.vlat)+Math.abs(gpsAnchor.vlon))>1e-9;
   const gap=Math.abs(tgtLat-gpsDisp.lat)+Math.abs(tgtLon-gpsDisp.lon);
   if(tracking && (moving||gap>2e-7)) gpsRaf=requestAnimationFrame(gpsStep);
@@ -941,6 +945,13 @@ function setFollow(on){ following=on; $('#bGps').classList.toggle('on',on); upda
   if(on && startTracking() && lastFix) map.panTo(lastFix,{animate:true,duration:.4}); }
 $('#bGps').onclick=()=>{ if(!tracking){ if(startTracking()) setFollow(true); } else setFollow(!following); };
 map.on('dragstart',()=>{ if(following) setFollow(false); });   // manual pan stops recentring, GPS keeps tracking
+map.on('zoomstart',()=>{ gpsZooming=true; });
+map.on('zoomend',()=>{ gpsZooming=false;   // reproject the ownship overlays cleanly at the settled zoom
+  if(gpsMarker&&gpsDisp){ const ll=[gpsDisp.lat,gpsDisp.lon];
+    gpsMarker.setLatLng(ll);
+    if(gpsCircle){ gpsCircle.setLatLng(ll); gpsCircle.setRadius(gpsAcc||30); }
+    updateGpsGraphics();
+    if(following) map.panTo(ll,{animate:false}); } });
 startTracking(); setFollow(true);                              // begin tracking on load, centred on first fix
 
 /* ---------- Ground elevation + altitude (ft) ---------- */
@@ -1482,7 +1493,7 @@ function cullRedraw(L0){
     const pl=L.polyline(g.seg,{renderer:L0.renderer,color:item.color||g.c,weight:item.width||g.w,opacity:.95,smoothFactor:sf,interactive:false});
     pl._baseColor=g.c; pl._baseWidth=g.w; pl.addTo(L0.grp); out.push(pl); }
   L0.linePolys=out; L0.polys=(L0.pointPolys||[]).concat(out);
-  scheduleOrder();
+  applyDrawOrder();   // reorder synchronously so the batched canvas redraw paints the correct z-order in one frame (no overlap flash)
 }
 function scheduleCull(L0){ if(L0._t) return;   // throttle (not debounce): must still fire during continuous follow-mode panning
   L0._t=setTimeout(function(){ L0._t=null; if(map.hasLayer(L0.grp)) cullRedraw(L0); },150); }
@@ -1520,7 +1531,7 @@ function buildLayer(item,geom){
     L0.polys=L0.pointPolys.concat(L0.linePolys);
   }
   L0.bounds=bounds.isValid()?bounds:null;
-  if(item.on){ grp.addTo(map); scheduleOrder(); }
+  if(item.on){ grp.addTo(map); applyDrawOrder(); }
 }
 function applyStyle(item){ const L0=kmlLayers[item.id]; if(!L0) return;
   for(let i=0;i<L0.polys.length;i++){ const pl=L0.polys[i];
