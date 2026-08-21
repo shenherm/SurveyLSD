@@ -411,7 +411,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09t';
+var swReg=null, APP_VERSION='2026.08.09u';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -815,11 +815,10 @@ function startTracking(){
 }
 const GPS_DR_MAX=2.5, GPS_TAU=0.14;   // seconds: dead-reckon cap, and easing time-constant
 /* ---------- user settings (persisted) ---------- */
-const SETTINGS_DEFAULT={gpsIcon:'plane', trackVector:true, rangeRings:false, measUnit:'m', roads:false};
+const SETTINGS_DEFAULT={gpsIcon:'plane', trackVector:true, rangeRings:false, roads:false};
 let settings=Object.assign({},SETTINGS_DEFAULT);
 try{ settings=Object.assign(settings, JSON.parse(localStorage.getItem('settings')||'{}')); }catch(e){}
 function saveSettings(){ try{ localStorage.setItem('settings',JSON.stringify(settings)); }catch(e){} }
-try{ if(!localStorage.getItem('measUnitMetresDefault')){ settings.measUnit='m'; localStorage.setItem('measUnitMetresDefault','1'); saveSettings(); } }catch(e){}   // one-time: set the fleet default to metres
 
 /* Orange top-down high-wing (Cessna-style) aircraft, nose pointing up (north) at 0°. */
 const PLANE_SVG='<svg viewBox="0 0 24 24" width="40" height="40"><polygon fill="#ff7a1a" stroke="#241200" stroke-width="0.7" stroke-linejoin="round" points="12,2 13,5.5 13,9 22,11 22,12.3 13,11.5 12.8,18 16.5,19.8 16.5,20.9 12.5,20 12,22 11.5,20 7.5,20.9 7.5,19.8 11.2,18 11,11.5 2,12.3 2,11 11,9 11,5.5"/></svg>';
@@ -1094,8 +1093,9 @@ let measuring=false, mMarkers=[], mLine=null, mLabel=null, mLayer=L.layerGroup()
 const mIcon=()=>L.divIcon({className:'',iconSize:[28,28],iconAnchor:[14,14],
   html:'<div style="width:28px;height:28px;border-radius:50%;border:3px solid #4fa3ff;background:rgba(79,163,255,.25);box-shadow:0 0 0 1px #000,inset 0 0 0 1px #fff"></div>'});
 function mClear(){ mLayer.clearLayers(); mMarkers=[]; mLine=null; mLabel=null; }
+let measUnit='m';   // measure tool always opens in metres; changeable per-session via the pill (not persisted)
 function fmtMeas(d){   // d in metres
-  const u=(settings.measUnit||'m');
+  const u=measUnit;
   if(u==='ft') return Math.round(d*M2FT).toLocaleString()+' ft';
   if(u==='nm') return (d/1852).toFixed(2)+' NM';
   return d<1000?Math.round(d)+' m':(d/1000).toFixed(2)+' km';
@@ -1117,10 +1117,11 @@ function mAddPoint(latlng){
   mMarkers.push(mk); mRedraw();
 }
 $('#bMeasure').onclick=()=>{ measuring=!measuring; $('#bMeasure').classList.toggle('on',measuring);
+  if(measuring) measUnit='m';   // always start in metres when the tool opens
   $('#measUnits').classList.toggle('show',measuring); syncMeasUnits(); mClear(); };
-function syncMeasUnits(){ document.querySelectorAll('#measUnits button').forEach(b=>b.classList.toggle('on',b.dataset.u===(settings.measUnit||'m'))); }
+function syncMeasUnits(){ document.querySelectorAll('#measUnits button').forEach(b=>b.classList.toggle('on',b.dataset.u===measUnit)); }
 $('#measUnits').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return;
-  settings.measUnit=b.dataset.u; saveSettings(); syncMeasUnits(); mRedraw(); });
+  measUnit=b.dataset.u; syncMeasUnits(); mRedraw(); });
 syncMeasUnits();
 map.on('click',e=>{
   if(!measuring) return;
