@@ -411,7 +411,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09v';
+var swReg=null, APP_VERSION='2026.08.09w';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -550,20 +550,24 @@ const OfflineTileLayer=L.TileLayer.extend({
       im.onload=function(){ res({im:im,u:u}); }; im.onerror=function(){ URL.revokeObjectURL(u); res(null); }; im.src=u; }); }
     function getStored(k){ return tileGet(k).catch(function(){ return null; }); }
     async function run(){
-      let b=await getStored(layerId+'/'+z+'/'+x+'/'+y);                 // 1) exact stored tile
-      if(b){ const r=await loadImg(b); if(r){ try{ ctx.drawImage(r.im,0,0,size.x,size.y); }catch(e){} URL.revokeObjectURL(r.u); return done(null,tile); } }
-      if(navigator.onLine!==false){                                     // 2) network when online
-        try{ const resp=await fetch(net); if(resp.ok){ const r=await loadImg(await resp.blob());
-          if(r){ try{ ctx.drawImage(r.im,0,0,size.x,size.y); }catch(e){} URL.revokeObjectURL(r.u); return done(null,tile); } } }catch(e){}
-      }
-      for(let up=1; up<=8 && (z-up)>=0; up++){                          // 3) upscaled stored ancestor
+      const exact=await getStored(layerId+'/'+z+'/'+x+'/'+y);          // 1) exact stored tile — sharpest
+      if(exact){ const r=await loadImg(exact); if(r){ try{ ctx.drawImage(r.im,0,0,size.x,size.y); }catch(e){} URL.revokeObjectURL(r.u); return done(null,tile); } }
+      let shown=false;                                                  // 2) instant placeholder: best cached ancestor, scaled
+      for(let up=1; up<=8 && (z-up)>=0; up++){
         const az=z-up, ax=x>>up, ay=y>>up;
         const ab=await getStored(layerId+'/'+az+'/'+ax+'/'+ay);
         if(ab){ const r=await loadImg(ab); if(r){ const n=r.im.width, scale=1<<up, sub=n/scale,
             ox=(x-(ax<<up))*sub, oy=(y-(ay<<up))*sub;
-          try{ ctx.drawImage(r.im, ox,oy,sub,sub, 0,0,size.x,size.y); }catch(e){} URL.revokeObjectURL(r.u); return done(null,tile); } }
+          try{ ctx.drawImage(r.im, ox,oy,sub,sub, 0,0,size.x,size.y); }catch(e){} URL.revokeObjectURL(r.u); shown=true; }
+          break; }
       }
-      return done(null,tile);                                          // 4) nothing: transparent (map bg, not black)
+      if(shown) done(null,tile);                                        // reveal the placeholder now (never black)
+      if(navigator.onLine!==false){                                     // 3) upgrade to the sharp network tile when online
+        try{ const resp=await fetch(net); if(resp.ok){ const r=await loadImg(await resp.blob());
+          if(r){ try{ ctx.clearRect(0,0,size.x,size.y); ctx.drawImage(r.im,0,0,size.x,size.y); }catch(e){} URL.revokeObjectURL(r.u);
+            if(!shown) done(null,tile); return; } } }catch(e){}
+      }
+      if(!shown) done(null,tile);                                       // 4) nothing available: transparent (base shows, not black)
     }
     run();
     return tile;
@@ -571,7 +575,7 @@ const OfflineTileLayer=L.TileLayer.extend({
 });
 function offlineLayer(url,opts){ return new OfflineTileLayer(url,opts); }
 
-const esri=offlineLayer(esriUrl(),{maxZoom:21,maxNativeZoom:19,attribution:ESRI_ATTR,updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2,layerId:'esri'});
+const esri=offlineLayer(esriUrl(),{maxZoom:21,maxNativeZoom:16,attribution:ESRI_ATTR,updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2,layerId:'esri'});
 
 // Offline base: EOX Sentinel-2 cloudless (~10m, free, legally bakeable). Online for now;
 // the pre-built MBTiles pack (build_offline_base.py) will make this work with no signal.
