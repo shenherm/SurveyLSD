@@ -299,6 +299,10 @@
 .gp-n.sel{background:var(--amber);color:#11161b;border-color:var(--amber)}
 .gp-go{min-height:60px;border-radius:11px;background:var(--good);color:#06281a;border:none;font-size:19px;font-weight:700;cursor:pointer;width:100%;margin-top:11px;letter-spacing:.4px}
 .gp-go:active{filter:brightness(1.12)}
+.gp-recent{width:100%;min-height:46px;border:1px solid var(--accent);border-radius:10px;background:var(--panel2);color:var(--ink);cursor:pointer;display:flex;align-items:center;gap:10px;padding:6px 12px;margin-bottom:10px;text-align:left}
+.gp-recent:active{filter:brightness(1.15)}
+.gp-recent s{color:var(--accent);font-size:10px;text-transform:uppercase;letter-spacing:.6px;text-decoration:none;flex:none}
+.gp-recent b{font-family:var(--mono);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gp-conf{margin-top:9px;text-align:center;font-size:14px;color:var(--good);font-family:var(--mono);min-height:18px}
 .gp-sl{min-height:52px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:#cfd8e1;font-size:15px;font-weight:600;font-family:var(--mono);cursor:pointer}
 .gp-sl:active{background:var(--amber);color:#11161b}
@@ -312,6 +316,7 @@
     <button class="gp-tab" data-gpmode="coord">Coordinate</button>
   </div>
   <div class="gp-read" id="gpRead"></div>
+  <button class="gp-recent" id="gpRecent" style="display:none"></button>
   <div id="gpBody"></div>
   <button class="gp-go" id="gpGo">GO</button>
   <div class="gp-conf" id="gpConf"></div>
@@ -411,7 +416,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09y';
+var swReg=null, APP_VERSION='2026.08.09z';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1245,22 +1250,49 @@ map.on('click',e=>{
     if(act==='cnext'){S.coord.active=S.coord.active==='lat'?'lon':'lat';return all();}
     if(act==='dot'){const fa=S.coord.active;if(S.coord[fa].indexOf('.')<0)S.coord[fa]+=(S.coord[fa]===''?'0.':'.');return all();}
   });
-  $('#gpGo').onclick=()=>{
+  function doGo(){
     if(S.mode==='coord'){
       const la=parseFloat(S.coord.lat), lo=parseFloat(S.coord.lon);
-      if(isNaN(la)||isNaN(lo)){toast('Enter lat and lon');return;}
-      setFollow(false); map.setView([Math.abs(la), -Math.abs(lo)],16);closeSheets();return;
+      if(isNaN(la)||isNaN(lo)){toast('Enter lat and lon');return false;}
+      const lat=Math.abs(la), lon=-Math.abs(lo);
+      setFollow(false); map.setView([lat,lon],16); return true;
     }
     const L=S.lsd;
-    if(!L.spot||!L.sec||!L.twp||!L.rge||!L.mer){toast('Fill every field first');return;}
+    if(!L.spot||!L.sec||!L.twp||!L.rge||!L.mer){toast('Fill every field first');return false;}
     const o=(S.spotType==='lsd')
       ? {lsd:+L.spot,sec:+L.sec,twp:+L.twp,rge:+L.rge,mer:+L.mer}
       : {qtr:L.spot,sec:+L.sec,twp:+L.twp,rge:+L.rge,mer:+L.mer};
     const ll=lsdToLatLon(o);
-    if(!ll){toast('Not found in the grid');return;}
-    setFollow(false); map.setView([ll.lat,ll.lon], S.spotType==='lsd'?17:16);closeSheets();
+    if(!ll){toast('Not found in the grid');return false;}
+    setFollow(false); map.setView([ll.lat,ll.lon], S.spotType==='lsd'?17:16); return true;
+  }
+  function gotoLabel(){
+    if(S.mode==='coord') return S.coord.lat+' N, '+S.coord.lon+' W';
+    const L=S.lsd, q=(S.spotType==='qtr')?L.spot:quarterFromLsd(+L.spot);
+    return '('+q+') '+((S.spotType==='lsd')?pd(L.spot,2)+'-':'')+pd(L.sec,2)+'-'+pd(L.twp,2)+'-'+pd(L.rge,2)+'-W'+L.mer+'M';
+  }
+  function saveLastGoto(){
+    const rec={mode:S.mode,spotType:S.spotType,lsd:Object.assign({},S.lsd),coord:Object.assign({},S.coord),label:gotoLabel()};
+    try{ localStorage.setItem('lastGoto',JSON.stringify(rec)); }catch(e){}
+  }
+  function readLastGoto(){ try{ return JSON.parse(localStorage.getItem('lastGoto')||'null'); }catch(e){ return null; } }
+  function refreshRecent(){
+    const btn=$('#gpRecent'); if(!btn) return; const rec=readLastGoto();
+    if(rec&&rec.label){ btn.style.display=''; btn.innerHTML='<s>\u21BA Recent</s><b>'+escapeHtml(rec.label)+'</b>'; }
+    else btn.style.display='none';
+  }
+  $('#gpGo').onclick=()=>{ if(doGo()){ saveLastGoto(); closeSheets(); } };
+  $('#gpRecent').onclick=()=>{
+    const rec=readLastGoto(); if(!rec) return;
+    S.mode=rec.mode||'lsd'; S.spotType=rec.spotType||'lsd';
+    S.lsd=Object.assign({spot:'',sec:'',twp:'',rge:'',mer:''}, rec.lsd||{});
+    S.coord=Object.assign({active:'lat',lat:'',lon:''}, rec.coord||{});
+    S.active=(S.mode==='coord')?'lat':'mer';
+    document.querySelectorAll('.gp-tab').forEach(x=>x.classList.toggle('on',x.dataset.gpmode===S.mode));
+    all();                                   // fill the pad with the last target (visible if the jump can't resolve)
+    if(doGo()) closeSheets();                 // one tap: refill + jump back
   };
-  $('#bGoto').onclick=()=>{ resetAll(); all(); openSheet('sheetGoto'); };
+  $('#bGoto').onclick=()=>{ resetAll(); all(); refreshRecent(); openSheet('sheetGoto'); };
   all();
 })();
 
