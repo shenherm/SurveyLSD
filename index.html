@@ -411,7 +411,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09w';
+var swReg=null, APP_VERSION='2026.08.09x';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -575,7 +575,7 @@ const OfflineTileLayer=L.TileLayer.extend({
 });
 function offlineLayer(url,opts){ return new OfflineTileLayer(url,opts); }
 
-const esri=offlineLayer(esriUrl(),{maxZoom:21,maxNativeZoom:16,attribution:ESRI_ATTR,updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2,layerId:'esri'});
+const esri=offlineLayer(esriUrl(),{maxZoom:21,maxNativeZoom:19,attribution:ESRI_ATTR,updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2,layerId:'esri'});
 
 // Offline base: EOX Sentinel-2 cloudless (~10m, free, legally bakeable). Online for now;
 // the pre-built MBTiles pack (build_offline_base.py) will make this work with no signal.
