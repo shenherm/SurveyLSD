@@ -411,7 +411,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09x';
+var swReg=null, APP_VERSION='2026.08.09y';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -769,18 +769,24 @@ function lsdToLatLonExact(o){
 // unified: exact when grid is loaded, approximate as fallback while loading
 function latlonToLSD(la,lo){ if(GRID){const e=latlonToLSDexact(la,lo);if(e)return e;} return latlonToLSDapprox(la,lo); }
 function lsdToLatLon(o){ if(GRID){const e=lsdToLatLonExact(o);if(e)return e;} return lsdToLatLonApprox(o); }
-// load the grids (Alberta + Saskatchewan), both sit next to index.html on the server
-Promise.all([
-  fetch('ats_grid.bin').then(r=>r.ok?r.arrayBuffer():null).catch(()=>null),
-  fetch('sk_grid.bin').then(r=>r.ok?r.arrayBuffer():null).catch(()=>null)
-]).then(bufs=>{
-  if(!bufs.some(Boolean)) return null;        // offline or missing: keep approximate
-  return buildGridChunked(bufs);
-}).then(grid=>{
-  if(!grid) return;
-  GRID=grid; _lastSecIdx=-1; updateReadout();
-  toast('Exact LSD grid loaded — '+grid.count.toLocaleString()+' sections');
-}).catch(()=>{});
+// load the grids (Alberta + Saskatchewan). Critical + static: if the first attempt comes back
+// empty/unparseable, retry once (online) with a cache-buster to bypass any bad cached copy.
+function loadGrids(bust){
+  const q = bust ? ('?r='+Date.now()) : '';
+  return Promise.all([
+    fetch('ats_grid.bin'+q).then(r=>r.ok?r.arrayBuffer():null).catch(()=>null),
+    fetch('sk_grid.bin'+q).then(r=>r.ok?r.arrayBuffer():null).catch(()=>null)
+  ]).then(bufs=>{
+    if(!bufs.some(Boolean)) return null;        // offline or missing: keep approximate for now
+    return buildGridChunked(bufs);
+  }).then(grid=>{
+    if(!grid) return false;
+    GRID=grid; _lastSecIdx=-1; updateReadout();
+    toast('Exact LSD grid loaded — '+grid.count.toLocaleString()+' sections');
+    return true;
+  }).catch(()=>false);
+}
+loadGrids(false).then(ok=>{ if(!ok && navigator.onLine!==false) setTimeout(function(){ loadGrids(true); }, 2000); });
 
 /* ---------- Readout (coalesced to one update per frame, DOM written only on change) ---------- */
 let _roPending=false,_lastLa='',_lastLo='',_lastZ='',_lastLsd='';
