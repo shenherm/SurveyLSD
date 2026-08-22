@@ -416,7 +416,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09z';
+var swReg=null, APP_VERSION='2026.08.09aa';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1229,7 +1229,7 @@ map.on('click',e=>{
   function advance(){const i=ORDER.indexOf(S.active);if(i<ORDER.length-1)S.active=ORDER[i+1];all();}
   function all(){conf.textContent='';renderRead();renderBody();}
   document.querySelectorAll('.gp-tab').forEach(t=>{t.onclick=()=>{
-    S.mode=t.dataset.gpmode;document.querySelectorAll('.gp-tab').forEach(x=>x.classList.toggle('on',x===t));all();};});
+    S.mode=t.dataset.gpmode;document.querySelectorAll('.gp-tab').forEach(x=>x.classList.toggle('on',x===t));all();refreshRecent();};});
   bodyEl.addEventListener('click',e=>{
     const el=e.target.closest('button');if(!el)return;const d=el.dataset;
     if(d.gpfield){S.active=d.gpfield;return all();}
@@ -1271,26 +1271,24 @@ map.on('click',e=>{
     const L=S.lsd, q=(S.spotType==='qtr')?L.spot:quarterFromLsd(+L.spot);
     return '('+q+') '+((S.spotType==='lsd')?pd(L.spot,2)+'-':'')+pd(L.sec,2)+'-'+pd(L.twp,2)+'-'+pd(L.rge,2)+'-W'+L.mer+'M';
   }
+  function gotoKey(mode){ return mode==='coord' ? 'lastGotoCoord' : 'lastGotoLsd'; }
   function saveLastGoto(){
-    const rec={mode:S.mode,spotType:S.spotType,lsd:Object.assign({},S.lsd),coord:Object.assign({},S.coord),label:gotoLabel()};
-    try{ localStorage.setItem('lastGoto',JSON.stringify(rec)); }catch(e){}
+    const rec={spotType:S.spotType,lsd:Object.assign({},S.lsd),coord:Object.assign({},S.coord),label:gotoLabel()};
+    try{ localStorage.setItem(gotoKey(S.mode),JSON.stringify(rec)); }catch(e){}
   }
-  function readLastGoto(){ try{ return JSON.parse(localStorage.getItem('lastGoto')||'null'); }catch(e){ return null; } }
+  function readLastGoto(mode){ try{ return JSON.parse(localStorage.getItem(gotoKey(mode))||'null'); }catch(e){ return null; } }
   function refreshRecent(){
-    const btn=$('#gpRecent'); if(!btn) return; const rec=readLastGoto();
+    const btn=$('#gpRecent'); if(!btn) return; const rec=readLastGoto(S.mode);   // only the current tab's memory
     if(rec&&rec.label){ btn.style.display=''; btn.innerHTML='<s>\u21BA Recent</s><b>'+escapeHtml(rec.label)+'</b>'; }
     else btn.style.display='none';
   }
   $('#gpGo').onclick=()=>{ if(doGo()){ saveLastGoto(); closeSheets(); } };
   $('#gpRecent').onclick=()=>{
-    const rec=readLastGoto(); if(!rec) return;
-    S.mode=rec.mode||'lsd'; S.spotType=rec.spotType||'lsd';
-    S.lsd=Object.assign({spot:'',sec:'',twp:'',rge:'',mer:''}, rec.lsd||{});
-    S.coord=Object.assign({active:'lat',lat:'',lon:''}, rec.coord||{});
-    S.active=(S.mode==='coord')?'lat':'mer';
-    document.querySelectorAll('.gp-tab').forEach(x=>x.classList.toggle('on',x.dataset.gpmode===S.mode));
-    all();                                   // fill the pad with the last target (visible if the jump can't resolve)
-    if(doGo()) closeSheets();                 // one tap: refill + jump back
+    const rec=readLastGoto(S.mode); if(!rec) return;                            // recall only the current tab's target
+    if(S.mode==='coord'){ S.coord=Object.assign({active:'lat',lat:'',lon:''}, rec.coord||{}); S.active='lat'; }
+    else { S.spotType=rec.spotType||'lsd'; S.lsd=Object.assign({spot:'',sec:'',twp:'',rge:'',mer:''}, rec.lsd||{}); S.active='mer'; }
+    all();
+    if(doGo()) closeSheets();
   };
   $('#bGoto').onclick=()=>{ resetAll(); all(); refreshRecent(); openSheet('sheetGoto'); };
   all();
