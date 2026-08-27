@@ -416,7 +416,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09aa';
+var swReg=null, APP_VERSION='2026.08.09ab';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -473,7 +473,7 @@ const toast = (m)=>{const t=$('#toast');t.textContent=m;t.classList.add('show');
 const showBanner=(m)=>{const b=$('#banner');b.innerHTML=m;b.classList.add('show');};
 
 /* ---------- Map + base layers (with diagnosis) ---------- */
-const map = L.map('map',{zoomControl:true,attributionControl:true,
+const map = L.map('map',{zoomControl:false,attributionControl:true,
   center:[53.5461,-113.4938], zoom:13, maxZoom:21, zoomSnap:0.25,
   preferCanvas:true, fadeAnimation:false, markerZoomAnimation:true});
 
