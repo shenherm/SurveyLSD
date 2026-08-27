@@ -58,7 +58,7 @@
   L.tileLayer(ESRI, { maxZoom:21, maxNativeZoom:19 }).addTo(map);
 
   // simulated aircraft state
-  var lat=52.55, lon=-114.33, heading=90, mode='track', following=true, simOn=true, flip=1, raf=0, last=0;
+  var lat=52.55, lon=-114.33, heading=90, mode='track', following=true, simOn=true, flip=-1, raf=0, last=0;
   var turnRate=6;           // deg/sec (gentle continuous turn -> a circuit)
   var speed=0.0006;         // deg/sec forward (visible but calm)
 
