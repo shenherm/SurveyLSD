@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Track-Up rotation test — LSD Patrol Nav</title>
+<link rel="stylesheet" href="./vendor/leaflet/leaflet.css">
+<style>
+  :root{--panel:#151a21;--line:#2a333e;--ink:#e9eff5;--muted:#8994a2;--amber:#ffb31c;--good:#37d27b;--accent:#4d9fff;--mono:ui-monospace,Menlo,monospace}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#000;font-family:system-ui,-apple-system,sans-serif;-webkit-user-select:none;user-select:none}
+  #map{position:absolute;inset:0;background:#000}
+  /* fixed screen overlays (siblings of the map) */
+  #cross{position:absolute;top:50%;left:50%;width:26px;height:26px;margin:-13px 0 0 -13px;z-index:500;pointer-events:none}
+  #cross:before,#cross:after{content:"";position:absolute;background:rgba(255,255,255,.85)}
+  #cross:before{left:12px;top:0;width:2px;height:26px}
+  #cross:after{top:12px;left:0;height:2px;width:26px}
+  #hud{position:absolute;top:calc(env(safe-area-inset-top,0) + 10px);left:10px;right:10px;z-index:600;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;pointer-events:none}
+  .card{background:rgba(21,26,33,.92);border:1px solid var(--line);border-radius:12px;color:var(--ink);padding:10px 12px;pointer-events:auto;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+  .status{font-family:var(--mono);font-size:12px;line-height:1.55;min-width:150px}
+  .status b{color:var(--amber)} .status .g{color:var(--good)} .status .a{color:var(--accent)}
+  .btns{display:flex;flex-direction:column;gap:8px;margin-left:auto}
+  button{font-family:inherit;font-weight:700;border-radius:11px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:11px 14px;font-size:14px;cursor:pointer;white-space:nowrap}
+  button:active{filter:brightness(1.18)}
+  #bMode{border-color:var(--accent);color:#dbeaff}
+  #bMode.track{background:var(--accent);color:#04213f}
+  #bResume{display:none;background:var(--good);color:#06281a;border:none;box-shadow:0 4px 16px rgba(55,210,123,.4)}
+  .small{font-size:12px;padding:8px 11px;font-weight:600;color:var(--muted)}
+  #note{position:absolute;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0) + 12px);z-index:600;color:#cfd6de;font-size:12px;text-align:center;background:rgba(10,13,17,.82);border:1px solid var(--line);border-radius:10px;padding:9px 12px;pointer-events:none}
+  .plane{will-change:transform}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="cross"></div>
+
+<div id="hud">
+  <div class="card status" id="status">loading…</div>
+  <div class="btns">
+    <button id="bMode" class="track">Track-Up</button>
+    <button id="bResume">↺ Resume tracking</button>
+    <button id="bSim" class="small">Pause sim</button>
+    <button id="bFlip" class="small">Flip rotation</button>
+  </div>
+</div>
+<div id="note">Simulated aircraft flying a circuit. In <b>Track-Up</b> the map turns so the aircraft always points up. <b>Drag the map</b> — it should freeze at that heading and let you pan freely; tap <b>Resume</b> to re-lock to the aircraft.</div>
+
+<script src="./vendor/leaflet/leaflet.js"></script>
+<script src="./vendor/leaflet-rotate.js"></script>
+<script>
+(function(){
+  var ESRI='https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?token=AAPTagkQq6As6m1gxdI19EzG2fA..Ul-ABwLCYFI6yJgMhn3Ah0wZF0IG_FUlwLM6nExbMSc8_7j5YCpOKqAlqo_17dF6wU28aP6Y8pfng-W-U_MTZfzP3dCUjyupViUcfysIaHwJF6WLGMjtofCKIg8SSkWVt1psgHQvAz0uHLS_yK2VozgGa4aodGP7R3qZBi5c7VlMKkb_XaWd01zwc9RrQ7apJZvk0uduTqU6Lov_eIuVJhRYp3jtqH7GHJkorXII0-fDheCg2wkY9BVCWU5tqQ16AT1_MwPAK9WG';
+  var PLANE='<svg viewBox="0 0 24 24" width="42" height="42"><polygon fill="#ff7a1a" stroke="#241200" stroke-width="0.7" stroke-linejoin="round" points="12,2 13,5.5 13,9 22,11 22,12.3 13,11.5 12.8,18 16.5,19.8 16.5,20.9 12.5,20 12,22 11.5,20 7.5,20.9 7.5,19.8 11.2,18 11,11.5 2,12.3 2,11 11,9 11,5.5"/></svg>';
+
+  var map = L.map('map', { rotate:true, bearing:0, touchRotate:false, rotateControl:false,
+    zoomControl:false, attributionControl:false, preferCanvas:true, fadeAnimation:false });
+  map.setView([52.55, -114.33], 15);
+  L.tileLayer(ESRI, { maxZoom:21, maxNativeZoom:19 }).addTo(map);
+
+  // simulated aircraft state
+  var lat=52.55, lon=-114.33, heading=90, mode='track', following=true, simOn=true, flip=1, raf=0, last=0;
+  var turnRate=6;           // deg/sec (gentle continuous turn -> a circuit)
+  var speed=0.0006;         // deg/sec forward (visible but calm)
+
+  var plane = L.marker([lat,lon], {
+    icon: L.divIcon({ className:'plane', html:PLANE, iconSize:[42,42], iconAnchor:[21,21] }),
+    rotation: heading, rotateWithView: true, interactive:false, keyboard:false, zIndexOffset:1000
+  }).addTo(map);
+
+  function bearingScreen(){ try{ return Math.round(((map.getBearing?map.getBearing():0)%360+360)%360); }catch(e){ return 0; } }
+  function applyBearing(){
+    if(mode==='track' && following){ try{ map.setBearing(flip*heading); }catch(e){} }
+  }
+  function setMode(m){
+    mode=m;
+    var b=document.getElementById('bMode');
+    b.textContent = (m==='track')?'Track-Up':'North-Up';
+    b.classList.toggle('track', m==='track');
+    if(m==='north'){ try{ map.setBearing(0); }catch(e){} }
+    else if(following){ applyBearing(); }
+    updateHud();
+  }
+  function setFollowing(on){
+    following=on;
+    document.getElementById('bResume').style.display = on ? 'none' : 'block';
+    if(on){ map.setView([lat,lon], map.getZoom(), {animate:false}); applyBearing(); }
+    updateHud();
+  }
+  function updateHud(){
+    document.getElementById('status').innerHTML =
+      'MODE&nbsp; <b>'+(mode==='track'?'TRACK-UP':'NORTH-UP')+'</b><br>'+
+      'HDG&nbsp;&nbsp; <span class="g">'+String(Math.round(heading)).padStart(3,'0')+'&deg;</span><br>'+
+      'MAP&nbsp;&nbsp; <span class="a">'+String(bearingScreen()).padStart(3,'0')+'&deg;</span><br>'+
+      'LOCK&nbsp; '+(following?'<span class="g">following</span>':'<span style="color:#ff6b6b">frozen</span>');
+  }
+
+  function tick(ts){
+    raf=requestAnimationFrame(tick);
+    var dt = last ? Math.min(0.05,(ts-last)/1000) : 0.016; last=ts;
+    if(simOn){
+      heading = (heading + turnRate*dt) % 360;
+      var hr = heading*Math.PI/180;
+      lat += Math.cos(hr)*speed*dt;
+      lon += Math.sin(hr)*speed*dt / Math.cos(lat*Math.PI/180);
+      plane.setLatLng([lat,lon]);
+      plane.setRotation(heading);
+    }
+    applyBearing();
+    if(following) map.setView([lat,lon], map.getZoom(), {animate:false});
+    updateHud();
+  }
+
+  // freeze the heading the instant the user grabs the map; a Resume button re-locks to the aircraft
+  map.on('dragstart', function(){ if(following) setFollowing(false); });
+
+  document.getElementById('bMode').onclick   = function(){ setMode(mode==='track'?'north':'track'); };
+  document.getElementById('bResume').onclick = function(){ setFollowing(true); };
+  document.getElementById('bSim').onclick    = function(){ simOn=!simOn; last=0; this.textContent=simOn?'Pause sim':'Resume sim'; };
+  document.getElementById('bFlip').onclick   = function(){ flip=-flip; if(mode==='track'&&following) applyBearing(); };
+
+  setMode('track'); setFollowing(true);
+  raf=requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
