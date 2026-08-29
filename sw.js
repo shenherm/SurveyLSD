@@ -7,7 +7,7 @@
    The survey grids + DEM live in their OWN cache (GRIDS) so a shell/code update
    never re-downloads or evicts them -- they are fetched once and kept. Bump
    GRID_VER only when ats_grid.bin / sk_grid.bin / dem.bin themselves change. */
-var SHELL_VER = 'v32';
+var SHELL_VER = 'v33';
 var DATA_VER  = 'v1';
 var GRID_VER  = 'v1';
 var SHELL = 'surveylsd-shell-' + SHELL_VER;   // app shell + libraries (cache-first)
