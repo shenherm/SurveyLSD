@@ -430,7 +430,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09af';
+var swReg=null, APP_VERSION='2026.08.09ag';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1802,6 +1802,7 @@ function openWorkOrder(i){
   const o=workOrders[i]; if(!o) return; _woCur=o;
   const badge=(o.wi===0)?'<span class="wobadge cur">This week</span>':'<span class="wobadge old">Prior week</span>';
   let h='';
+  if(o.src) h+=woRow('Work source',o.src);
   if(o.reporter) h+=woRow('Reported by',o.reporter);
   h+=woRow('LSD',o.raw,'big');
   if(o.pipeline) h+=woRow('Pipeline',o.pipeline);

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Pull the latest client ground-disturbance .xlsx attachments from Gmail (IMAP) and
-build workorders.json for EasyLSD. Runs in GitHub Actions. Credentials come from env:
-  GMAIL_USER, GMAIL_APP_PASSWORD  (a Google App Password, not your login password)
-  WO_QUERY  (optional Gmail search; default targets recent xlsx attachments)"""
+"""Pull recent client ground-disturbance .xlsx from Gmail (IMAP) -> workorders.json.
+Per SOURCE (David Hoppe/Keyera, Nils/Plains, Trevor/Plains) we take the LATEST sheet of the
+3 most-recent emails = 3 weeks (newest email = this week). Env:
+  GMAIL_USER, GMAIL_APP_PASSWORD, WO_QUERY (optional Gmail search)."""
 import os, sys, imaplib, email, tempfile, json, datetime
+from email.utils import parsedate_to_datetime
 import parse_workorders as P
 
 USER=os.environ['GMAIL_USER']; PWD=os.environ['GMAIL_APP_PASSWORD']
-QUERY=os.environ.get('WO_QUERY') or 'has:attachment filename:xlsx newer_than:21d'
+QUERY=os.environ.get('WO_QUERY') or 'has:attachment filename:xlsx newer_than:40d'
 
 def main():
     M=imaplib.IMAP4_SSL('imap.gmail.com'); M.login(USER, PWD)
@@ -16,27 +17,46 @@ def main():
     ids=data[0].split()
     if not ids:
         print('No matching emails for query:', QUERY); return 0
-    allo=[]; used=set()
-    for mid in reversed(ids[-12:]):                     # a few most-recent, newest first
+    # collect (date, from, message-id) then process newest-first
+    metas=[]
+    for mid in ids[-40:]:
+        typ,md=M.fetch(mid,'(BODY.PEEK[HEADER.FIELDS (FROM DATE)])')
+        hdr=email.message_from_bytes(md[0][1]) if md and md[0] else None
+        if not hdr: continue
+        try: dt=parsedate_to_datetime(hdr.get('Date'))
+        except Exception: dt=None
+        metas.append((dt or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc), hdr.get('From',''), mid))
+    metas.sort(key=lambda x:x[0], reverse=True)   # newest first
+
+    allo=[]; rank={}
+    for dt, frm, mid in metas:
+        src=P.source_label(frm)
+        r=rank.get(src,0)
+        if r>=3: continue                          # 3 weeks per source
         typ,md=M.fetch(mid,'(RFC822)')
         if not md or not md[0]: continue
         msg=email.message_from_bytes(md[0][1])
+        got=False
         for part in msg.walk():
             fn=part.get_filename()
-            if fn and fn.lower().endswith('.xlsx') and fn not in used:
-                used.add(fn)
+            if fn and fn.lower().endswith('.xlsx'):
                 payload=part.get_payload(decode=True)
                 if not payload: continue
-                tf=tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
-                tf.write(payload); tf.close()
-                try: allo+=P.parse_file(tf.name, source=fn)
+                tf=tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False); tf.write(payload); tf.close()
+                try:
+                    for o in P.latest_sheet_orders(tf.name, source=fn, src=src):
+                        o['wi']=r; allo.append(o)
+                    got=True
                 except Exception as e: print('parse error on', fn, ':', e)
+        if got:
+            rank[src]=r+1
+            print(f"  email {dt:%Y-%m-%d} from '{frm[:40]}' -> {src or '?'} (week {r})")
     M.logout()
     orders=P.merge(allo)
     doc={'updated':datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z'),
          'orders':orders}
     json.dump(doc, open('workorders.json','w'), indent=1)
-    print('wrote workorders.json:', len(orders), 'orders from', len(used), 'file(s):', sorted(used))
+    print('wrote workorders.json:', len(orders), 'orders; weeks/source:', rank)
     return 0
 
 if __name__=='__main__':

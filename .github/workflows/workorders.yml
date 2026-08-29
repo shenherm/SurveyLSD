@@ -1,7 +1,7 @@
 name: Update work orders
 on:
   schedule:
-    - cron: '17 */3 * * *'      # every 3 hours (weekly emails don't need more)
+    - cron: '11 * * * *'          # every hour
   workflow_dispatch:            # manual "Run workflow" button
 permissions:
   contents: write
