@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="LSD Patrol">
+<meta name="apple-mobile-web-app-title" content="EasyLSD">
 <meta name="theme-color" content="#0c0f12">
-<title>LSD Patrol Nav</title>
+<title>EasyLSD</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="apple-touch-icon" sizes="167x167" href="apple-touch-icon-167.png">
@@ -375,7 +375,7 @@
 <input type="file" id="replaceIn" accept="*/*" class="vhfile">
 <div id="measUnits"><button data-u="ft">Ft</button><button data-u="m">m</button><button data-u="nm">NM</button></div>
 <div id="toast"></div>
-<div id="boot"><div class="bootcard"><img src="envirotech-logo.png" alt="EnviroTech Aviation Inc."></div><div class="boottitle">LSD Patrol Nav</div><div class="bar"></div><div>Loading map…</div></div>
+<div id="boot"><div class="bootcard"><img src="envirotech-logo.png" alt="EnviroTech Aviation Inc."></div><div class="boottitle">EasyLSD</div><div class="bar"></div><div>Loading map…</div></div>
 
 <!-- Leaflet: local copy primary, CDN fallback chain handled below -->
 <script src="vendor/leaflet/leaflet.js"></script>
@@ -416,7 +416,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09ac';
+var swReg=null, APP_VERSION='2026.08.09ad';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -580,16 +580,16 @@ const OfflineTileLayer=L.TileLayer.extend({
 });
 function offlineLayer(url,opts){ return new OfflineTileLayer(url,opts); }
 
-const esri=offlineLayer(esriUrl(),{maxZoom:21,maxNativeZoom:19,attribution:ESRI_ATTR,updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2,layerId:'esri'});
+const esri=offlineLayer(esriUrl(),{maxZoom:21,maxNativeZoom:19,attribution:ESRI_ATTR,updateWhenIdle:true,updateWhenZooming:false,keepBuffer:4,layerId:'esri'});
 
 // Offline base: EOX Sentinel-2 cloudless (~10m, free, legally bakeable). Online for now;
 // the pre-built MBTiles pack (build_offline_base.py) will make this work with no signal.
 const S2_YEAR='2024';
 const s2attr='Sentinel-2 cloudless '+S2_YEAR+' &copy; EOX IT Services GmbH (modified Copernicus Sentinel data)';
 const s2=offlineLayer('https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-'+S2_YEAR+'_3857/default/g/{z}/{y}/{x}.jpg',
-  {maxZoom:21,maxNativeZoom:14,attribution:s2attr,updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2,layerId:'s2'});
+  {maxZoom:21,maxNativeZoom:14,attribution:s2attr,updateWhenIdle:true,updateWhenZooming:false,keepBuffer:4,layerId:'s2'});
 
-const osm=offlineLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap',updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2,layerId:'osm'});
+const osm=offlineLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap',updateWhenIdle:true,updateWhenZooming:false,keepBuffer:4,layerId:'osm'});
 
 // ---- Roads & place-name reference overlay (transparent, over imagery / under the lines) ----
 // Same Esri provider + key as the imagery, so it caches through the same offline pipeline.
@@ -598,7 +598,7 @@ const osm=offlineLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{max
 // layers to basemap keys, and its keyless ones block cross-origin reads.
 function refUrl(){ return 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png'; }
 if(!map.getPane('refPane')){ map.createPane('refPane'); map.getPane('refPane').style.zIndex='300'; map.getPane('refPane').style.pointerEvents='none'; }
-const refLabels=offlineLayer(refUrl(),{maxZoom:21,maxNativeZoom:16,pane:'refPane',layerId:'reflabels',subdomains:'abcd',attribution:'&copy; OpenStreetMap, &copy; CARTO',updateWhenIdle:false,updateWhenZooming:true,keepBuffer:2});
+const refLabels=offlineLayer(refUrl(),{maxZoom:21,maxNativeZoom:16,pane:'refPane',layerId:'reflabels',subdomains:'abcd',attribution:'&copy; OpenStreetMap, &copy; CARTO',updateWhenIdle:true,updateWhenZooming:false,keepBuffer:4});
 const refLayer=L.layerGroup([refLabels]);
 const REF_LAYERS=[refLabels];
 const REF_DL_ZMAX=15;   // cache labels up to z15 (overzoomed above) to keep downloads light
