@@ -227,8 +227,16 @@
   <div class="setrow"><div class="setl"><div class="setname">Track vector</div><div class="sethint">Line ahead of you showing where you'll be in one minute.</div></div><button class="tgl" id="tgVec" aria-label="Track vector"></button></div>
   <div class="setrow"><div class="setl"><div class="setname">Range rings</div><div class="sethint">Distance rings in nautical miles, centred on you — for judging distance to targets.</div></div><button class="tgl" id="tgRings" aria-label="Range rings"></button></div>
   <div class="setrow"><div class="setl"><div class="setname">Roads &amp; place names</div><div class="sethint">Overlay road, town and village names on the map — for reporting observations by location. Download a line to keep them offline.</div></div><button class="tgl" id="tgRoads" aria-label="Roads and place names"></button></div>
+  <div class="setrow"><div class="setl"><div class="setname">Known work</div><div class="sethint">Client-reported ground disturbance. Amber = this week, grey = prior 2 weeks. Tap a marker for who reported it, the LSD and the work.</div></div><button class="tgl" id="tgWork" aria-label="Known work"></button></div>
   <div style="border-top:1px solid var(--line);margin:16px 0 12px"></div>
   <div class="row"><button class="act ghost" id="openKey">Imagery &amp; downloads</button></div>
+</div>
+
+<div class="sheet" id="sheetWork">
+  <button class="close" data-close>&times;</button>
+  <h2>Known work</h2>
+  <div id="woBody"></div>
+  <div class="row"><button class="act amber" id="woGoto">Centre on this location</button></div>
 </div>
 
 <div class="sheet" id="sheetKey">
@@ -271,6 +279,12 @@
 .setl{min-width:0}
 .setname{font-size:15px;font-weight:700;color:var(--ink)}
 .sethint{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.35}
+.worow{display:flex;gap:12px;padding:10px 2px;border-bottom:1px solid var(--line)}
+.worow .wl{flex:none;width:104px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding-top:2px}
+.worow .wv{flex:1;font-size:15px;color:var(--ink);line-height:1.35}
+.worow .wv.big{font-family:var(--mono);font-size:16px;letter-spacing:.3px}
+.wobadge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:6px}
+.wobadge.cur{background:#4a3a10;color:var(--amber)} .wobadge.old{background:#252c35;color:var(--muted)}
 .tgl{flex:none;width:52px;height:31px;border-radius:16px;border:1px solid var(--line);background:var(--panel2);position:relative;cursor:pointer;transition:background .15s,border-color .15s;padding:0}
 .tgl::after{content:'';position:absolute;top:2px;left:2px;width:25px;height:25px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.4)}
 .tgl.on{background:var(--amber);border-color:var(--amber)}
@@ -416,7 +430,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09ae';
+var swReg=null, APP_VERSION='2026.08.09af';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -787,6 +801,7 @@ function loadGrids(bust){
   }).then(grid=>{
     if(!grid) return false;
     GRID=grid; _lastSecIdx=-1; updateReadout();
+    if(typeof renderWorkOrders==='function' && typeof workOrders!=='undefined' && workOrders.length) renderWorkOrders();
     toast('Exact LSD grid loaded — '+grid.count.toLocaleString()+' sections');
     return true;
   }).catch(()=>false);
@@ -833,7 +848,7 @@ function startTracking(){
 }
 const GPS_DR_MAX=2.5, GPS_TAU=0.14;   // seconds: dead-reckon cap, and easing time-constant
 /* ---------- user settings (persisted) ---------- */
-const SETTINGS_DEFAULT={gpsIcon:'plane', trackVector:true, rangeRings:false, roads:false};
+const SETTINGS_DEFAULT={gpsIcon:'plane', trackVector:true, rangeRings:false, roads:false, work:true};
 let settings=Object.assign({},SETTINGS_DEFAULT);
 try{ settings=Object.assign(settings, JSON.parse(localStorage.getItem('settings')||'{}')); }catch(e){}
 function saveSettings(){ try{ localStorage.setItem('settings',JSON.stringify(settings)); }catch(e){} }
@@ -1741,7 +1756,8 @@ $('#bKml').onclick=()=>{ renderKmlList(); openSheet('sheetKml'); };
 function syncSettingsUI(){ $('#tgIcon').classList.toggle('on',settings.gpsIcon==='plane');
   $('#tgVec').classList.toggle('on',!!settings.trackVector);
   $('#tgRings').classList.toggle('on',!!settings.rangeRings);
-  $('#tgRoads').classList.toggle('on',!!settings.roads); }
+  $('#tgRoads').classList.toggle('on',!!settings.roads);
+  $('#tgWork').classList.toggle('on',!!settings.work); }
 function applyRoads(){ if(settings.roads){ if(!map.hasLayer(refLayer)) refLayer.addTo(map); } else { if(map.hasLayer(refLayer)) map.removeLayer(refLayer); } }
 $('#bSettings').onclick=()=>{ syncSettingsUI(); openSheet('sheetSettings'); };
 $('#openKey').onclick=()=>{ openSheet('sheetKey'); dlRefresh(); dlStoredRefresh(); };
@@ -1755,6 +1771,50 @@ $('#tgRoads').onclick=()=>{ settings.roads=!settings.roads; saveSettings(); sync
     fetch(dlTileUrl(refLabels._url,'abcd',t)).then(r=>toast('Road labels: '+(r.ok?('connected \u2713'):('server said '+r.status)))).catch(e=>toast('Road labels blocked: '+((e&&e.message)||'CORS/network'))); }
 };
 applyRoads();
+
+/* ---------- Known work: client ground-disturbance reports (workorders.json) ---------- */
+let workOrders=[]; const woLayer=L.layerGroup(); let _woCur=null;
+function WO_SVG(cur){
+  const fill=cur?'#ffb31c':'#7b8593';
+  return '<div style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.55))"><svg width="26" height="26" viewBox="0 0 28 28">'
+    +'<path d="M14 2 L26 14 L14 26 L2 14 Z" fill="'+fill+'" stroke="#241200" stroke-width="1.6"/>'
+    +'<rect x="12.7" y="7.5" width="2.6" height="8.5" rx="1.3" fill="#241200"/>'
+    +'<circle cx="14" cy="19.8" r="1.7" fill="#241200"/></svg></div>';
+}
+function renderWorkOrders(){
+  woLayer.clearLayers();
+  workOrders.forEach(function(o,i){
+    const q=(o.kind==='qtr')?{qtr:o.sub,sec:o.sec,twp:o.twp,rge:o.rge,mer:o.mer}
+                            :{lsd:o.sub,sec:o.sec,twp:o.twp,rge:o.rge,mer:o.mer};
+    const ll=lsdToLatLon(q); if(!ll) return; o._ll=[ll.lat,ll.lon];
+    L.marker(o._ll,{icon:L.divIcon({className:'',html:WO_SVG(o.wi===0),iconSize:[26,26],iconAnchor:[13,13]}),
+      title:(o.pipeline||'Known work'), riseOnHover:true})
+      .on('click',function(){ openWorkOrder(i); }).addTo(woLayer);
+  });
+}
+function loadWorkOrders(){
+  fetch('workorders.json').then(function(r){ return r.ok?r.json():null; }).then(function(doc){
+    if(!doc||!doc.orders) return; workOrders=doc.orders; renderWorkOrders();
+  }).catch(function(){});
+}
+function woRow(label,val,cls){ return '<div class="worow"><div class="wl">'+label+'</div><div class="wv'+(cls?' '+cls:'')+'">'+escapeHtml(val||'\u2014')+'</div></div>'; }
+function openWorkOrder(i){
+  const o=workOrders[i]; if(!o) return; _woCur=o;
+  const badge=(o.wi===0)?'<span class="wobadge cur">This week</span>':'<span class="wobadge old">Prior week</span>';
+  let h='';
+  if(o.reporter) h+=woRow('Reported by',o.reporter);
+  h+=woRow('LSD',o.raw,'big');
+  if(o.pipeline) h+=woRow('Pipeline',o.pipeline);
+  h+=woRow('Work',o.desc);
+  if(o.line) h+=woRow('Line status',o.line);
+  if(o.work) h+=woRow('Work status',o.work);
+  h+='<div class="worow"><div class="wl">Reported</div><div class="wv">'+escapeHtml(o.week||'\u2014')+' '+badge+'</div></div>';
+  $('#woBody').innerHTML=h; openSheet('sheetWork');
+}
+$('#woGoto').onclick=function(){ if(_woCur&&_woCur._ll){ setFollow(false); map.setView(_woCur._ll,16); closeSheets(); } };
+function applyWork(){ if(settings.work){ if(!map.hasLayer(woLayer)) woLayer.addTo(map); } else { if(map.hasLayer(woLayer)) map.removeLayer(woLayer); } }
+$('#tgWork').onclick=()=>{ settings.work=!settings.work; saveSettings(); syncSettingsUI(); applyWork(); };
+applyWork(); loadWorkOrders();
 
 /* ---------- One-click offline imagery download for the current view ---------- */
 const DL_TILE_CAP=400000;            // absolute backstop (~9GB); the practical limit is the device's free storage, checked live

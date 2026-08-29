@@ -7,7 +7,7 @@
    The survey grids + DEM live in their OWN cache (GRIDS) so a shell/code update
    never re-downloads or evicts them -- they are fetched once and kept. Bump
    GRID_VER only when ats_grid.bin / sk_grid.bin / dem.bin themselves change. */
-var SHELL_VER = 'v35';
+var SHELL_VER = 'v36';
 var DATA_VER  = 'v1';
 var GRID_VER  = 'v1';
 var SHELL = 'surveylsd-shell-' + SHELL_VER;   // app shell + libraries (cache-first)
@@ -128,6 +128,8 @@ self.addEventListener('fetch', function(event){
     if (isGridFile(url)) { event.respondWith(gridFirst(req).catch(function(){ return caches.match(req); })); return; }
     // Built-in lines (manifest + geometry): network-first so new/updated built-ins appear online.
     if (url.pathname.indexOf('/lines/') !== -1) { event.respondWith(networkFirst(req, SHELL)); return; }
+    // Client work orders: network-first so the weekly update appears online, cached for offline.
+    if (url.pathname.indexOf('workorders.json') !== -1) { event.respondWith(networkFirst(req, SHELL)); return; }
     var isDoc = req.mode === 'navigate'
              || url.pathname.charAt(url.pathname.length - 1) === '/'
              || url.pathname.indexOf('.html') !== -1;
