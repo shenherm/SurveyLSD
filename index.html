@@ -416,7 +416,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09ad';
+var swReg=null, APP_VERSION='2026.08.09ae';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1775,6 +1775,48 @@ function freeBytes(){                 // best-effort free storage (quota - usage
 
 function dlZoomSel(){ return 16; }   // locked to ZL16
 function activeBaseLayer(){ if(map.hasLayer(esri)) return esri; if(map.hasLayer(s2)) return s2; if(map.hasLayer(osm)) return osm; return esri; }
+
+/* Silent prefetch: while the user pinches/pans, warm the browser cache for the zoom level and
+   area they're heading into, so RELEASING the gesture snaps to sharp imagery instead of only
+   then starting the download. The display still HOLDS the current level (scaled) until the new
+   tiles are ready — via Leaflet tile retention + the placeholder in createTile. */
+var _pfSeen = Object.create(null);
+function _prefetchTile(layer, x, y, z){
+  var url; try{ url = layer.getTileUrl({x:x, y:y, z:z}); }catch(e){ return; }
+  var t = Date.now();
+  if(_pfSeen[url] && (t - _pfSeen[url]) < 90000) return;   // already warmed recently
+  _pfSeen[url] = t;
+  try{ fetch(url).then(function(r){ return (r && r.ok) ? r.blob() : null; }).catch(function(){}); }catch(e){}
+}
+function prefetchViewport(zoomFloat){
+  if(navigator.onLine===false) return;
+  if(Object.keys(_pfSeen).length > 1500) _pfSeen = Object.create(null);
+  var layers=[]; var base=activeBaseLayer(); if(base) layers.push(base);
+  if(map.hasLayer(refLayer)) layers.push(refLabels);
+  var b=map.getBounds();
+  for(var i=0;i<layers.length;i++){
+    var layer=layers[i], ts=layer.getTileSize().x;
+    var maxN=layer.options.maxNativeZoom || layer.options.maxZoom || 19;
+    var z=Math.round(zoomFloat); if(z>maxN) z=maxN; if(z<0) z=0;
+    var n=Math.pow(2,z);
+    var tl=map.project(b.getNorthWest(), z).divideBy(ts).floor();
+    var br=map.project(b.getSouthEast(), z).divideBy(ts).floor();
+    for(var x=tl.x-1; x<=br.x+1; x++){
+      for(var y=tl.y-1; y<=br.y+1; y++){
+        if(y<0 || y>=n) continue;
+        _prefetchTile(layer, ((x%n)+n)%n, y, z);
+      }
+    }
+  }
+}
+var _pfThrottle=0, _pfLastZ=-999;
+function schedulePrefetch(){
+  var now=Date.now(), zr=Math.round(map.getZoom());
+  if(zr===_pfLastZ && (now-_pfThrottle)<120) return;   // fire at once when the target level changes, else throttle
+  _pfThrottle=now; _pfLastZ=zr;
+  prefetchViewport(map.getZoom());
+}
+map.on('zoom move', schedulePrefetch);
 function lon2tx(lon,z){ return Math.floor((lon+180)/360*Math.pow(2,z)); }
 function lat2ty(lat,z){ const r=lat*Math.PI/180; return Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z)); }
 function clampT(v,z){ const m=Math.pow(2,z)-1; return Math.max(0,Math.min(m,v)); }
