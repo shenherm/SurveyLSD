@@ -448,7 +448,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09aj';
+var swReg=null, APP_VERSION='2026.08.09ak';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1838,7 +1838,7 @@ applyWork(); loadWorkOrders();
 /* ---------- Check Google Drive for prior reports at the centred LSD ---------- */
 /* Paste your Google OAuth Web client ID below to enable in-app results. Until then, the
    Drive button falls back to opening Drive's own search in a new tab (needs no setup). */
-const DRIVE_CLIENT_ID='';
+const DRIVE_CLIENT_ID='404519346195-953t4g62tn4v2rdsn81o885p00hiav91.apps.googleusercontent.com';
 const DRIVE_SCOPE='https://www.googleapis.com/auth/drive.readonly';
 const DRIVE_SHARED_DRIVE='Flight Ops';      // restrict the in-app search to this shared drive
 const DRIVE_FOLDER='Archived Photos';        // (the photos live under this folder within that drive)
