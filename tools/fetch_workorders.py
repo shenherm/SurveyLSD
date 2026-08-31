@@ -28,7 +28,7 @@ def main():
         metas.append((dt or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc), hdr.get('From',''), mid))
     metas.sort(key=lambda x:x[0], reverse=True)   # newest first
 
-    allo=[]; rank={}
+    allo=[]; rank={}; emails=[]
     for dt, frm, mid in metas:
         src=P.source_label(frm)
         r=rank.get(src,0)
@@ -50,13 +50,15 @@ def main():
                 except Exception as e: print('parse error on', fn, ':', e)
         if got:
             rank[src]=r+1
+            emails.append({'source':src or '', 'date':(dt.isoformat() if getattr(dt,'year',0)>2000 else ''), 'week':r})
             print(f"  email {dt:%Y-%m-%d} from '{frm[:40]}' -> {src or '?'} (week {r})")
     M.logout()
     orders=P.merge(allo)
+    emails.sort(key=lambda e:e['date'] or '', reverse=True)
     doc={'updated':datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z'),
-         'orders':orders}
+         'emails':emails, 'orders':orders}
     json.dump(doc, open('workorders.json','w'), indent=1)
-    print('wrote workorders.json:', len(orders), 'orders; weeks/source:', rank)
+    print('wrote workorders.json:', len(orders), 'orders;', len(emails), 'emails; weeks/source:', rank)
     return 0
 
 if __name__=='__main__':

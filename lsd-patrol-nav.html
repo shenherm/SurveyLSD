@@ -120,6 +120,12 @@
   #driveView.show{display:flex}
   #driveView img{max-width:97%;max-height:93%;object-fit:contain}
   #driveViewClose{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:16px;width:44px;height:44px;border-radius:50%;background:rgba(30,38,48,.92);color:#fff;border:1px solid var(--line);font-size:24px;line-height:1;cursor:pointer;z-index:2}
+  .spinner{width:26px;height:26px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:middle}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loadbox{text-align:center;padding:26px 10px;color:var(--muted);font-size:13px}
+  .loadbox .spinner{margin-bottom:10px}
+  .woinfo{width:32px;height:32px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);color:var(--accent);cursor:pointer;flex:none;display:inline-flex;align-items:center;justify-content:center;padding:0}
+  #driveView .spinner{position:absolute;top:50%;left:50%;margin:-13px 0 0 -13px}
   .toggle{width:42px;height:25px;border-radius:13px;background:var(--panel2);border:1px solid var(--line);position:relative;flex:none;cursor:pointer}
   .toggle b{position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:var(--muted);transition:all .15s}
   .toggle.on{background:#143a23;border-color:var(--good)}
@@ -238,7 +244,7 @@
   <div class="setrow"><div class="setl"><div class="setname">Track vector</div><div class="sethint">Line ahead of you showing where you'll be in one minute.</div></div><button class="tgl" id="tgVec" aria-label="Track vector"></button></div>
   <div class="setrow"><div class="setl"><div class="setname">Range rings</div><div class="sethint">Distance rings in nautical miles, centred on you — for judging distance to targets.</div></div><button class="tgl" id="tgRings" aria-label="Range rings"></button></div>
   <div class="setrow"><div class="setl"><div class="setname">Roads &amp; place names</div><div class="sethint">Overlay road, town and village names on the map — for reporting observations by location. Download a line to keep them offline.</div></div><button class="tgl" id="tgRoads" aria-label="Roads and place names"></button></div>
-  <div class="setrow"><div class="setl"><div class="setname">Known work</div><div class="sethint">Client-reported ground disturbance. Amber = this week, grey = prior 2 weeks. Tap a marker for who reported it, the LSD and the work.</div></div><button class="tgl" id="tgWork" aria-label="Known work"></button></div>
+  <div class="setrow"><div class="setl"><div class="setname">Known work</div><div class="sethint">Client-reported ground disturbance. Amber = this week, grey = prior 2 weeks. Tap a marker for who reported it, the LSD and the work.</div></div><div style="display:flex;align-items:center;gap:10px;flex:none"><button class="woinfo" id="bWorkInfo" aria-label="Known work status"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none"/></svg></button><button class="tgl" id="tgWork" aria-label="Known work"></button></div></div>
   <div style="border-top:1px solid var(--line);margin:16px 0 12px"></div>
   <div class="row"><button class="act ghost" id="openKey">Imagery &amp; downloads</button></div>
 </div>
@@ -255,7 +261,14 @@
   <h2>Drive &mdash; <span id="driveTitle" style="font-family:var(--mono);color:var(--amber)"></span></h2>
   <div id="driveList"></div>
 </div>
-<div id="driveView"><button id="driveViewClose">&times;</button><img id="driveImg" src="" alt=""></div>
+<div id="driveView"><button id="driveViewClose">&times;</button><span class="spinner" id="driveViewSpin" style="display:none"></span><img id="driveImg" src="" alt=""></div>
+
+<div class="sheet" id="sheetWorkInfo">
+  <button class="close" data-close>&times;</button>
+  <h2>Known work &mdash; status</h2>
+  <div class="hint">Confirms the app has the latest client reports loaded.</div>
+  <div id="woInfoBody"></div>
+</div>
 
 <div class="sheet" id="sheetKey">
   <button class="close" data-close>&times;</button>
@@ -448,7 +461,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09ak';
+var swReg=null, APP_VERSION='2026.08.09al';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1813,8 +1826,26 @@ function renderWorkOrders(){
 function loadWorkOrders(){
   fetch('workorders.json').then(function(r){ return r.ok?r.json():null; }).then(function(doc){
     if(!doc||!doc.orders) return; workOrders=doc.orders; renderWorkOrders();
+    try{ localStorage.setItem('woStatus', JSON.stringify({loadedAt:Date.now(), updated:doc.updated||'', emails:doc.emails||[]})); }catch(e){}
   }).catch(function(){});
 }
+function openWorkInfo(){
+  var st={}; try{ st=JSON.parse(localStorage.getItem('woStatus')||'{}'); }catch(e){}
+  var fdt=function(t){ if(!t) return '\u2014'; try{ return new Date(t).toLocaleString([], {day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''+t; } };
+  var fd=function(iso){ if(!iso) return '\u2014'; try{ return new Date(iso).toLocaleDateString([], {day:'numeric',month:'short',year:'numeric'}); }catch(e){ return ''+iso; } };
+  var h='';
+  h+='<div class="worow"><div class="wl">Loaded in app</div><div class="wv">'+(st.loadedAt?fdt(st.loadedAt):'not yet')+'</div></div>';
+  h+='<div class="worow"><div class="wl">Data compiled</div><div class="wv">'+fdt(st.updated)+'</div></div>';
+  var em=(st.emails||[]).slice(0,9);
+  if(em.length){
+    h+='<div class="kclbl" style="margin-top:12px">Client emails picked up</div>';
+    em.forEach(function(e){ h+='<div class="worow"><div class="wl">'+escapeHtml(e.source||'\u2014')+'</div><div class="wv">'+fd(e.date)+'</div></div>'; });
+  } else {
+    h+='<div class="hint" style="margin-top:12px">Email dates will appear here after the next automatic sync runs.</div>';
+  }
+  $('#woInfoBody').innerHTML=h; openSheet('sheetWorkInfo');
+}
+$('#bWorkInfo').onclick=function(e){ if(e&&e.stopPropagation) e.stopPropagation(); openWorkInfo(); };
 function woRow(label,val,cls){ return '<div class="worow"><div class="wl">'+label+'</div><div class="wv'+(cls?' '+cls:'')+'">'+escapeHtml(val||'\u2014')+'</div></div>'; }
 function openWorkOrder(i){
   const o=workOrders[i]; if(!o) return; _woCur=o;
@@ -1846,18 +1877,41 @@ let _driveScopeId=null;
 function resolveScope(tok){
   if(_driveScopeId!==null) return Promise.resolve(_driveScopeId);
   if(!DRIVE_SHARED_DRIVE){ _driveScopeId=''; return Promise.resolve(''); }
-  return fetch('https://www.googleapis.com/drive/v3/drives?pageSize=100&fields=drives(id,name)',{headers:{Authorization:'Bearer '+tok}})
+  return fetchT('https://www.googleapis.com/drive/v3/drives?pageSize=100&fields=drives(id,name)',{headers:{Authorization:'Bearer '+tok}},25000)
     .then(function(r){ return r.ok?r.json():{}; })
     .then(function(j){ var d=(j.drives||[]).filter(function(x){return x.name===DRIVE_SHARED_DRIVE;})[0]; _driveScopeId=d?d.id:''; return _driveScopeId; })
-    .catch(function(){ _driveScopeId=''; return ''; });
+    .catch(function(){ return ''; });   // couldn't resolve (weak signal): fall back to a full search this time, retry scope next time
 }
 let _gisP=null,_tokClient=null,_driveTok=null,_driveTokExp=0,_tokRes=null,_tokRej=null;
 function loadGIS(){
   if(window.google&&google.accounts&&google.accounts.oauth2) return Promise.resolve();
   if(_gisP) return _gisP;
-  _gisP=new Promise(function(res,rej){ var s=document.createElement('script'); s.src='https://accounts.google.com/gsi/client'; s.async=true;
-    s.onload=function(){res();}; s.onerror=function(){rej(new Error('Google sign-in failed to load'));}; document.head.appendChild(s); });
+  _gisP=new Promise(function(res,rej){
+    var s=document.createElement('script'); s.src='https://accounts.google.com/gsi/client'; s.async=true;
+    var done=false, to=setTimeout(function(){ finish(false,'Google sign-in timed out'); },25000);
+    function finish(ok,msg){ if(done) return; done=true; clearTimeout(to);
+      if(ok){ res(); } else { _gisP=null; try{ if(s.parentNode) s.parentNode.removeChild(s); }catch(e){} rej(new Error(msg)); } }
+    s.onload=function(){ (window.google&&google.accounts&&google.accounts.oauth2) ? finish(true) : finish(false,'Google sign-in unavailable'); };
+    s.onerror=function(){ finish(false,'Google sign-in failed to load'); };
+    document.head.appendChild(s);
+  });
   return _gisP;
+}
+/* fetch with a timeout (weak cell reception can hang a request forever) */
+function fetchT(url, opts, ms){
+  return new Promise(function(res,rej){
+    var ctl; try{ ctl=new AbortController(); }catch(e){}
+    var o={}; for(var k in (opts||{})) o[k]=opts[k]; if(ctl) o.signal=ctl.signal;
+    var done=false, to=setTimeout(function(){ if(done)return; done=true; try{ctl&&ctl.abort();}catch(e){} rej(new Error('slow connection — timed out')); }, ms||30000);
+    fetch(url,o).then(function(r){ if(done)return; done=true; clearTimeout(to); res(r); },
+                      function(e){ if(done)return; done=true; clearTimeout(to); rej(e); });
+  });
+}
+/* retry a promise-returning fn a few times with backoff (for flaky reception) */
+function withRetry(fn, tries, gap){
+  tries=tries||3; gap=gap||1500;
+  return fn().catch(function(e){ if(tries<=1) throw e;
+    return new Promise(function(r){ setTimeout(r,gap); }).then(function(){ return withRetry(fn, tries-1, gap); }); });
 }
 function initTok(){ if(_tokClient||!(window.google&&google.accounts&&google.accounts.oauth2)) return;
   _tokClient=google.accounts.oauth2.initTokenClient({ client_id:DRIVE_CLIENT_ID, scope:DRIVE_SCOPE,
@@ -1868,14 +1922,21 @@ function initTok(){ if(_tokClient||!(window.google&&google.accounts&&google.acco
 function driveToken(){ return new Promise(function(res,rej){
   if(_driveTok&&Date.now()<_driveTokExp-60000) return res(_driveTok);
   if(!_tokClient) initTok(); if(!_tokClient) return rej(new Error('Google sign-in not ready'));
-  _tokRes=res; _tokRej=rej; try{ _tokClient.requestAccessToken({prompt:''}); }catch(e){ rej(e); } }); }
+  var done=false, to=setTimeout(function(){ if(done)return; done=true; _tokRes=_tokRej=null; rej(new Error('sign-in timed out \u2014 check your connection and tap Drive again')); }, 90000);
+  _tokRes=function(t){ if(done)return; done=true; clearTimeout(to); res(t); };
+  _tokRej=function(e){ if(done)return; done=true; clearTimeout(to); rej(e); };
+  try{ _tokClient.requestAccessToken({prompt:''}); }catch(e){ if(!done){done=true;clearTimeout(to);rej(e);} } }); }
 function driveFmtDate(iso){ try{ return new Date(iso).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}); }catch(e){ return iso||''; } }
 function driveViewFile(id,name){
-  toast('Loading '+name+'\u2026');
-  driveToken().then(function(tok){ return fetch('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media&supportsAllDrives=true',{headers:{Authorization:'Bearer '+tok}}); })
-   .then(function(r){ return r.ok?r.blob():null; })
-   .then(function(b){ if(!b){toast('Could not load image');return;} var im=$('#driveImg'); if(im.src.indexOf('blob:')===0) URL.revokeObjectURL(im.src); im.src=URL.createObjectURL(b); $('#driveView').classList.add('show'); })
-   .catch(function(){ toast('Could not load image'); });
+  var im=$('#driveImg'); if((''+im.src).indexOf('blob:')===0) URL.revokeObjectURL(im.src); im.removeAttribute('src');
+  $('#driveView').classList.add('show'); var sp=$('#driveViewSpin'); if(sp) sp.style.display='inline-block';
+  driveToken().then(function(tok){
+    return withRetry(function(){
+      return fetchT('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media&supportsAllDrives=true',{headers:{Authorization:'Bearer '+tok}},45000)
+        .then(function(r){ if(!r.ok) throw new Error('Drive '+r.status); return r.blob(); });
+    }, 3, 1500);
+  }).then(function(b){ if(sp) sp.style.display='none'; im.src=URL.createObjectURL(b); })
+    .catch(function(){ if(sp) sp.style.display='none'; $('#driveView').classList.remove('show'); toast('Could not load image \u2014 weak signal? Tap View again.'); });
 }
 function renderDriveResults(q,files){
   $('#driveTitle').textContent=q; var box=$('#driveList');
@@ -1888,24 +1949,31 @@ function renderDriveResults(q,files){
   box.querySelectorAll('[data-dv]').forEach(function(b){ b.onclick=function(){ var f=files[+b.getAttribute('data-dv')]; driveViewFile(f.id,f.name); }; });
   box.querySelectorAll('[data-do]').forEach(function(b){ b.onclick=function(){ var f=files[+b.getAttribute('data-do')]; window.open(f.webViewLink,'_blank'); }; });
 }
+function driveErr(q,msg){
+  $('#driveList').innerHTML='<div class="loadbox">Couldn\'t search Drive.<br><span style="color:var(--muted)">'+escapeHtml(msg||'error')+'</span><br><button class="act ghost" id="driveRetry" style="width:auto;padding:9px 18px;margin-top:12px">Try again</button></div>';
+  var rb=$('#driveRetry'); if(rb) rb.onclick=function(){ driveCheck(q); };
+}
 function driveCheck(q){
-  openSheet('sheetDrive'); $('#driveTitle').textContent=q; $('#driveList').innerHTML='<div class="empty">Searching Drive\u2026</div>';
+  openSheet('sheetDrive'); $('#driveTitle').textContent=q;
+  $('#driveList').innerHTML='<div class="loadbox"><span class="spinner"></span><br>Searching Flight Ops for <b>'+escapeHtml(q)+'</b>\u2026</div>';
   var run=function(){
     driveToken().then(function(tok){
       return resolveScope(tok).then(function(driveId){
-        var query="name contains '"+q.replace(/['\\]/g,'')+"' and trashed=false";
-        var url='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(query)
-          +'&fields=files(id,name,createdTime,webViewLink,mimeType)&orderBy=createdTime desc&pageSize=100'
-          +'&includeItemsFromAllDrives=true&supportsAllDrives=true'
-          +(driveId ? ('&corpora=drive&driveId='+driveId) : '&corpora=allDrives');
-        return fetch(url,{headers:{Authorization:'Bearer '+tok}});
+        return withRetry(function(){
+          var query="name contains '"+q.replace(/['\\]/g,'')+"' and trashed=false";
+          var url='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(query)
+            +'&fields=files(id,name,createdTime,webViewLink,mimeType)&orderBy=createdTime desc&pageSize=100'
+            +'&includeItemsFromAllDrives=true&supportsAllDrives=true'
+            +(driveId ? ('&corpora=drive&driveId='+driveId) : '&corpora=allDrives');
+          return fetchT(url,{headers:{Authorization:'Bearer '+tok}},30000)
+            .then(function(r){ if(!r.ok) throw new Error('Drive returned '+r.status); return r.json(); });
+        }, 3, 1500);
       });
-    }).then(function(r){ if(!r.ok) throw new Error('Drive returned '+r.status); return r.json(); })
-      .then(function(j){ renderDriveResults(q,(j.files||[])); })
-      .catch(function(e){ $('#driveList').innerHTML='<div class="empty">Couldn\'t search Drive.<br><span style="color:var(--muted)">'+escapeHtml((e&&e.message)||'error')+'</span></div>'; });
+    }).then(function(j){ renderDriveResults(q,(j.files||[])); })
+      .catch(function(e){ driveErr(q,(e&&e.message)||'error'); });
   };
   if(window.google&&google.accounts&&google.accounts.oauth2){ initTok(); run(); }
-  else { loadGIS().then(function(){ initTok(); run(); }).catch(function(e){ $('#driveList').innerHTML='<div class="empty">'+escapeHtml(e.message)+'</div>'; }); }
+  else { loadGIS().then(function(){ initTok(); run(); }).catch(function(e){ driveErr(q,e.message); }); }
 }
 $('#driveViewClose').onclick=function(){ $('#driveView').classList.remove('show'); var im=$('#driveImg'); if(im.src.indexOf('blob:')===0) URL.revokeObjectURL(im.src); im.src=''; };
 $('#bDrive').onclick=function(){
