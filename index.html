@@ -216,6 +216,7 @@
   <button class="btn" id="bMeasure"><svg class="ic" viewBox="0 0 24 24"><path d="M6 18L18 6"/><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/></svg><span class="lbl">Measure</span></button>
   <button class="btn" id="bGoto"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"/><circle cx="12" cy="12" r="1.8"/></svg><span class="lbl">Go to</span></button>
   <button class="btn" id="bPin"><svg class="ic" viewBox="0 0 24 24"><path d="M12 21s6-5.7 6-11a6 6 0 1 0-12 0c0 5.3 6 11 6 11z"/><circle cx="12" cy="10" r="2.2"/></svg><span class="lbl">Pin</span></button>
+  <button class="btn" id="bDrive"><svg class="ic" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg><span class="lbl">Drive</span></button>
   <button class="btn" id="bKml"><svg class="ic" viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 9-9"/><circle cx="3" cy="17" r="1.7"/><circle cx="21" cy="5" r="1.7"/></svg><span class="lbl">Lines</span></button>
   <button class="btn" id="bSettings"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3.2M12 18.3v3.2M2.5 12h3.2M18.3 12h3.2M5 5l2.2 2.2M16.8 16.8L19 19M19 5l-2.2 2.2M7.2 16.8L5 19"/></svg><span class="lbl">Settings</span></button>
 </div>
@@ -430,7 +431,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09ag';
+var swReg=null, APP_VERSION='2026.08.09ah';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1816,6 +1817,16 @@ $('#woGoto').onclick=function(){ if(_woCur&&_woCur._ll){ setFollow(false); map.s
 function applyWork(){ if(settings.work){ if(!map.hasLayer(woLayer)) woLayer.addTo(map); } else { if(map.hasLayer(woLayer)) map.removeLayer(woLayer); } }
 $('#tgWork').onclick=()=>{ settings.work=!settings.work; saveSettings(); syncSettingsUI(); applyWork(); };
 applyWork(); loadWorkOrders();
+
+/* ---------- Check Google Drive for prior reports at the centred LSD ---------- */
+$('#bDrive').onclick=function(){
+  const c=map.getCenter(); const o=latlonToLSD(c.lat,c.lng);
+  if(!o){ toast('No LSD at this spot'); return; }
+  const p2=function(n){ n=''+n; while(n.length<2) n='0'+n; return n; };
+  const q=p2(o.lsd)+'-'+p2(o.sec)+'-'+p2(o.twp)+'-'+p2(o.rge)+'-W'+o.mer+'M';
+  window.open('https://drive.google.com/drive/search?q='+encodeURIComponent(q),'_blank');
+  toast('Searching Drive: '+q);
+};
 
 /* ---------- One-click offline imagery download for the current view ---------- */
 const DL_TILE_CAP=400000;            // absolute backstop (~9GB); the practical limit is the device's free storage, checked live
