@@ -448,7 +448,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09ai';
+var swReg=null, APP_VERSION='2026.08.09aj';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1840,6 +1840,17 @@ applyWork(); loadWorkOrders();
    Drive button falls back to opening Drive's own search in a new tab (needs no setup). */
 const DRIVE_CLIENT_ID='';
 const DRIVE_SCOPE='https://www.googleapis.com/auth/drive.readonly';
+const DRIVE_SHARED_DRIVE='Flight Ops';      // restrict the in-app search to this shared drive
+const DRIVE_FOLDER='Archived Photos';        // (the photos live under this folder within that drive)
+let _driveScopeId=null;
+function resolveScope(tok){
+  if(_driveScopeId!==null) return Promise.resolve(_driveScopeId);
+  if(!DRIVE_SHARED_DRIVE){ _driveScopeId=''; return Promise.resolve(''); }
+  return fetch('https://www.googleapis.com/drive/v3/drives?pageSize=100&fields=drives(id,name)',{headers:{Authorization:'Bearer '+tok}})
+    .then(function(r){ return r.ok?r.json():{}; })
+    .then(function(j){ var d=(j.drives||[]).filter(function(x){return x.name===DRIVE_SHARED_DRIVE;})[0]; _driveScopeId=d?d.id:''; return _driveScopeId; })
+    .catch(function(){ _driveScopeId=''; return ''; });
+}
 let _gisP=null,_tokClient=null,_driveTok=null,_driveTokExp=0,_tokRes=null,_tokRej=null;
 function loadGIS(){
   if(window.google&&google.accounts&&google.accounts.oauth2) return Promise.resolve();
@@ -1881,11 +1892,14 @@ function driveCheck(q){
   openSheet('sheetDrive'); $('#driveTitle').textContent=q; $('#driveList').innerHTML='<div class="empty">Searching Drive\u2026</div>';
   var run=function(){
     driveToken().then(function(tok){
-      var query="name contains '"+q.replace(/['\\]/g,'')+"' and trashed=false";
-      var url='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(query)
-        +'&fields=files(id,name,createdTime,webViewLink,mimeType)&orderBy=createdTime desc&pageSize=100'
-        +'&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives';
-      return fetch(url,{headers:{Authorization:'Bearer '+tok}});
+      return resolveScope(tok).then(function(driveId){
+        var query="name contains '"+q.replace(/['\\]/g,'')+"' and trashed=false";
+        var url='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(query)
+          +'&fields=files(id,name,createdTime,webViewLink,mimeType)&orderBy=createdTime desc&pageSize=100'
+          +'&includeItemsFromAllDrives=true&supportsAllDrives=true'
+          +(driveId ? ('&corpora=drive&driveId='+driveId) : '&corpora=allDrives');
+        return fetch(url,{headers:{Authorization:'Bearer '+tok}});
+      });
     }).then(function(r){ if(!r.ok) throw new Error('Drive returned '+r.status); return r.json(); })
       .then(function(j){ renderDriveResults(q,(j.files||[])); })
       .catch(function(e){ $('#driveList').innerHTML='<div class="empty">Couldn\'t search Drive.<br><span style="color:var(--muted)">'+escapeHtml((e&&e.message)||'error')+'</span></div>'; });
