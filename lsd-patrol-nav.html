@@ -110,6 +110,16 @@
   .kml-item .nm{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .kml-item button{background:none;border:1px solid var(--line);color:var(--muted);border-radius:7px;padding:6px 8px;font-size:11px;cursor:pointer}
   .kml-item button.pindel{color:var(--warn);border-color:#5a2f2f}
+  .drow{display:flex;gap:10px;align-items:center;padding:9px 4px;border-bottom:1px solid var(--line)}
+  .drow .dinfo{flex:1;min-width:0}
+  .drow .dnm{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .drow .ddate{font-size:11px;color:var(--muted);margin-top:2px}
+  .drow button{background:none;border:1px solid var(--line);color:var(--muted);border-radius:7px;padding:6px 9px;font-size:11px;cursor:pointer}
+  .drow button.dv{color:var(--accent);border-color:#2c4a6b}
+  #driveView{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.93);display:none;align-items:center;justify-content:center}
+  #driveView.show{display:flex}
+  #driveView img{max-width:97%;max-height:93%;object-fit:contain}
+  #driveViewClose{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:16px;width:44px;height:44px;border-radius:50%;background:rgba(30,38,48,.92);color:#fff;border:1px solid var(--line);font-size:24px;line-height:1;cursor:pointer;z-index:2}
   .toggle{width:42px;height:25px;border-radius:13px;background:var(--panel2);border:1px solid var(--line);position:relative;flex:none;cursor:pointer}
   .toggle b{position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:var(--muted);transition:all .15s}
   .toggle.on{background:#143a23;border-color:var(--good)}
@@ -239,6 +249,13 @@
   <div id="woBody"></div>
   <div class="row"><button class="act amber" id="woGoto">Centre on this location</button></div>
 </div>
+
+<div class="sheet" id="sheetDrive">
+  <button class="close" data-close>&times;</button>
+  <h2>Drive &mdash; <span id="driveTitle" style="font-family:var(--mono);color:var(--amber)"></span></h2>
+  <div id="driveList"></div>
+</div>
+<div id="driveView"><button id="driveViewClose">&times;</button><img id="driveImg" src="" alt=""></div>
 
 <div class="sheet" id="sheetKey">
   <button class="close" data-close>&times;</button>
@@ -431,7 +448,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09ah';
+var swReg=null, APP_VERSION='2026.08.09ai';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1819,14 +1836,73 @@ $('#tgWork').onclick=()=>{ settings.work=!settings.work; saveSettings(); syncSet
 applyWork(); loadWorkOrders();
 
 /* ---------- Check Google Drive for prior reports at the centred LSD ---------- */
+/* Paste your Google OAuth Web client ID below to enable in-app results. Until then, the
+   Drive button falls back to opening Drive's own search in a new tab (needs no setup). */
+const DRIVE_CLIENT_ID='';
+const DRIVE_SCOPE='https://www.googleapis.com/auth/drive.readonly';
+let _gisP=null,_tokClient=null,_driveTok=null,_driveTokExp=0,_tokRes=null,_tokRej=null;
+function loadGIS(){
+  if(window.google&&google.accounts&&google.accounts.oauth2) return Promise.resolve();
+  if(_gisP) return _gisP;
+  _gisP=new Promise(function(res,rej){ var s=document.createElement('script'); s.src='https://accounts.google.com/gsi/client'; s.async=true;
+    s.onload=function(){res();}; s.onerror=function(){rej(new Error('Google sign-in failed to load'));}; document.head.appendChild(s); });
+  return _gisP;
+}
+function initTok(){ if(_tokClient||!(window.google&&google.accounts&&google.accounts.oauth2)) return;
+  _tokClient=google.accounts.oauth2.initTokenClient({ client_id:DRIVE_CLIENT_ID, scope:DRIVE_SCOPE,
+    callback:function(r){ if(r&&r.access_token){ _driveTok=r.access_token; _driveTokExp=Date.now()+((r.expires_in||3600)*1000); if(_tokRes)_tokRes(_driveTok); }
+      else { if(_tokRej)_tokRej(new Error((r&&r.error)||'Sign-in cancelled')); } _tokRes=_tokRej=null; },
+    error_callback:function(e){ if(_tokRej)_tokRej(e||new Error('Sign-in error')); _tokRes=_tokRej=null; } });
+}
+function driveToken(){ return new Promise(function(res,rej){
+  if(_driveTok&&Date.now()<_driveTokExp-60000) return res(_driveTok);
+  if(!_tokClient) initTok(); if(!_tokClient) return rej(new Error('Google sign-in not ready'));
+  _tokRes=res; _tokRej=rej; try{ _tokClient.requestAccessToken({prompt:''}); }catch(e){ rej(e); } }); }
+function driveFmtDate(iso){ try{ return new Date(iso).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}); }catch(e){ return iso||''; } }
+function driveViewFile(id,name){
+  toast('Loading '+name+'\u2026');
+  driveToken().then(function(tok){ return fetch('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media&supportsAllDrives=true',{headers:{Authorization:'Bearer '+tok}}); })
+   .then(function(r){ return r.ok?r.blob():null; })
+   .then(function(b){ if(!b){toast('Could not load image');return;} var im=$('#driveImg'); if(im.src.indexOf('blob:')===0) URL.revokeObjectURL(im.src); im.src=URL.createObjectURL(b); $('#driveView').classList.add('show'); })
+   .catch(function(){ toast('Could not load image'); });
+}
+function renderDriveResults(q,files){
+  $('#driveTitle').textContent=q; var box=$('#driveList');
+  if(!files.length){ box.innerHTML='<div class="empty">No files in Drive named <b>'+escapeHtml(q)+'</b>.</div>'; return; }
+  var h='';
+  files.forEach(function(f,i){ var isImg=(f.mimeType||'').indexOf('image/')===0;
+    h+='<div class="drow"><div class="dinfo"><div class="dnm">'+escapeHtml(f.name)+'</div><div class="ddate">Created '+driveFmtDate(f.createdTime)+'</div></div>'
+      +(isImg?'<button class="dv" data-dv="'+i+'">View</button>':'')+'<button data-do="'+i+'">Drive</button></div>'; });
+  box.innerHTML=h;
+  box.querySelectorAll('[data-dv]').forEach(function(b){ b.onclick=function(){ var f=files[+b.getAttribute('data-dv')]; driveViewFile(f.id,f.name); }; });
+  box.querySelectorAll('[data-do]').forEach(function(b){ b.onclick=function(){ var f=files[+b.getAttribute('data-do')]; window.open(f.webViewLink,'_blank'); }; });
+}
+function driveCheck(q){
+  openSheet('sheetDrive'); $('#driveTitle').textContent=q; $('#driveList').innerHTML='<div class="empty">Searching Drive\u2026</div>';
+  var run=function(){
+    driveToken().then(function(tok){
+      var query="name contains '"+q.replace(/['\\]/g,'')+"' and trashed=false";
+      var url='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(query)
+        +'&fields=files(id,name,createdTime,webViewLink,mimeType)&orderBy=createdTime desc&pageSize=100'
+        +'&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives';
+      return fetch(url,{headers:{Authorization:'Bearer '+tok}});
+    }).then(function(r){ if(!r.ok) throw new Error('Drive returned '+r.status); return r.json(); })
+      .then(function(j){ renderDriveResults(q,(j.files||[])); })
+      .catch(function(e){ $('#driveList').innerHTML='<div class="empty">Couldn\'t search Drive.<br><span style="color:var(--muted)">'+escapeHtml((e&&e.message)||'error')+'</span></div>'; });
+  };
+  if(window.google&&google.accounts&&google.accounts.oauth2){ initTok(); run(); }
+  else { loadGIS().then(function(){ initTok(); run(); }).catch(function(e){ $('#driveList').innerHTML='<div class="empty">'+escapeHtml(e.message)+'</div>'; }); }
+}
+$('#driveViewClose').onclick=function(){ $('#driveView').classList.remove('show'); var im=$('#driveImg'); if(im.src.indexOf('blob:')===0) URL.revokeObjectURL(im.src); im.src=''; };
 $('#bDrive').onclick=function(){
   const c=map.getCenter(); const o=latlonToLSD(c.lat,c.lng);
   if(!o){ toast('No LSD at this spot'); return; }
   const p2=function(n){ n=''+n; while(n.length<2) n='0'+n; return n; };
   const q=p2(o.lsd)+'-'+p2(o.sec)+'-'+p2(o.twp)+'-'+p2(o.rge)+'-W'+o.mer+'M';
-  window.open('https://drive.google.com/drive/search?q='+encodeURIComponent(q),'_blank');
-  toast('Searching Drive: '+q);
+  if(!DRIVE_CLIENT_ID){ window.open('https://drive.google.com/drive/search?q='+encodeURIComponent(q),'_blank'); toast('Searching Drive: '+q); return; }
+  driveCheck(q);
 };
+if(DRIVE_CLIENT_ID && navigator.onLine!==false){ loadGIS().then(initTok).catch(function(){}); }
 
 /* ---------- One-click offline imagery download for the current view ---------- */
 const DL_TILE_CAP=400000;            // absolute backstop (~9GB); the practical limit is the device's free storage, checked live
