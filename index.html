@@ -30,7 +30,7 @@
   html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
     font-family:'Plex Sans',-apple-system,system-ui,"SF Pro Text",Segoe UI,Roboto,sans-serif;overflow:hidden;
     -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
-  body{position:fixed;top:0;left:0;right:0;bottom:0;overscroll-behavior:none}
+  body{position:fixed;top:0;left:0;right:0;height:var(--appH,100%);overscroll-behavior:none}
   #map{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;background:#000}
 
   #readout{position:absolute;top:0;left:0;right:0;z-index:500;
@@ -470,7 +470,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09am';
+var swReg=null, APP_VERSION='2026.08.09an';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -2521,6 +2521,7 @@ setTimeout(()=>map.invalidateSize(),200);
    Re-validate the size on resume/resize and re-place the GPS marker so both self-correct. */
 function resyncMap(){
   if(!map) return;
+  setAppH();
   try{ map.invalidateSize(false); }catch(e){}
   if(gpsDisp){ const ll=[gpsDisp.lat,gpsDisp.lon];
     if(gpsMarker) gpsMarker.setLatLng(ll);
@@ -2529,6 +2530,17 @@ function resyncMap(){
   }
 }
 function resyncSoon(){ resyncMap(); setTimeout(resyncMap,250); }   // iOS finalises the viewport a tick after resume
+/* Anchor the UI to the REAL visible height (not iOS's stale fixed-viewport), so the bottom dock
+   can't get pushed off-screen after the app is backgrounded mid-flight and resumed. */
+function setAppH(){
+  var h=(window.visualViewport&&window.visualViewport.height)?window.visualViewport.height:window.innerHeight;
+  if(h) document.documentElement.style.setProperty('--appH', Math.round(h)+'px');
+}
+setAppH();
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', function(){ setAppH(); try{ map&&map.invalidateSize(false); }catch(e){} });
+  window.visualViewport.addEventListener('scroll', setAppH);
+}
 document.addEventListener('visibilitychange',function(){ if(!document.hidden) resyncSoon(); });
 window.addEventListener('pageshow',resyncSoon);
 window.addEventListener('focus',function(){ setTimeout(resyncMap,60); });
