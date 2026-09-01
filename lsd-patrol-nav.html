@@ -316,6 +316,15 @@
 .worow .wv.big{font-family:var(--mono);font-size:16px;letter-spacing:.3px}
 .wobadge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:6px}
 .wobadge.cur{background:#4a3a10;color:var(--amber)} .wobadge.old{background:#252c35;color:var(--muted)}
+.wo-cols{display:flex;flex-wrap:wrap;gap:12px}
+.wo-cols>.wo-card{flex:1 1 100%}
+.wo-cols.multi>.wo-card{flex:1 1 calc(50% - 6px);min-width:0}
+.wo-card{border:1px solid var(--line);border-radius:12px;padding:6px 12px;background:var(--panel2)}
+.wo-f{padding:6px 0;border-bottom:1px solid var(--line)}
+.wo-card .wo-f:last-child{border-bottom:none}
+.wo-fl{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.wo-fv{font-size:14px;color:var(--ink);margin-top:1px;word-break:break-word}
+.wo-fv.big{font-family:var(--mono);font-size:15px}
 .tgl{flex:none;width:52px;height:31px;border-radius:16px;border:1px solid var(--line);background:var(--panel2);position:relative;cursor:pointer;transition:background .15s,border-color .15s;padding:0}
 .tgl::after{content:'';position:absolute;top:2px;left:2px;width:25px;height:25px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.4)}
 .tgl.on{background:var(--amber);border-color:var(--amber)}
@@ -461,7 +470,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09al';
+var swReg=null, APP_VERSION='2026.08.09am';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1814,14 +1823,31 @@ function WO_SVG(cur){
 }
 function renderWorkOrders(){
   woLayer.clearLayers();
-  workOrders.forEach(function(o,i){
-    const q=(o.kind==='qtr')?{qtr:o.sub,sec:o.sec,twp:o.twp,rge:o.rge,mer:o.mer}
-                            :{lsd:o.sub,sec:o.sec,twp:o.twp,rge:o.rge,mer:o.mer};
-    const ll=lsdToLatLon(q); if(!ll) return; o._ll=[ll.lat,ll.lon];
-    L.marker(o._ll,{icon:L.divIcon({className:'',html:WO_SVG(o.wi===0),iconSize:[26,26],iconAnchor:[13,13]}),
-      title:(o.pipeline||'Known work'), riseOnHover:true})
-      .on('click',function(){ openWorkOrder(i); }).addTo(woLayer);
+  var groups={};
+  workOrders.forEach(function(o){
+    var q=(o.kind==='qtr')?{qtr:o.sub,sec:o.sec,twp:o.twp,rge:o.rge,mer:o.mer}
+                          :{lsd:o.sub,sec:o.sec,twp:o.twp,rge:o.rge,mer:o.mer};
+    var ll=lsdToLatLon(q); if(!ll) return; o._ll=[ll.lat,ll.lon];
+    var key=ll.lat.toFixed(5)+','+ll.lon.toFixed(5);   // one bucket per LSD (same resolved position)
+    if(!groups[key]) groups[key]={ll:o._ll, cur:[], old:[]};
+    (o.wi===0?groups[key].cur:groups[key].old).push(o);
   });
+  Object.keys(groups).forEach(function(k){
+    var g=groups[k];
+    if(g.cur.length && g.old.length){       // both this-week and older here -> amber + grey side by side
+      addWoMarker(g.ll, true,  g.cur, 30);   // amber, sits just left of the point
+      addWoMarker(g.ll, false, g.old, -4);   // grey, sits just right
+    } else if(g.cur.length){
+      addWoMarker(g.ll, true,  g.cur, 13);   // one amber icon (may cover several reports)
+    } else {
+      addWoMarker(g.ll, false, g.old, 13);   // one grey icon
+    }
+  });
+}
+function addWoMarker(ll, cur, list, anchorX){
+  L.marker(ll,{icon:L.divIcon({className:'',html:WO_SVG(cur),iconSize:[26,26],iconAnchor:[anchorX,13]}),
+    title:(list[0].pipeline||'Known work'), riseOnHover:true})
+    .on('click',function(){ openWorkOrders(list); }).addTo(woLayer);
 }
 function loadWorkOrders(){
   fetch('workorders.json').then(function(r){ return r.ok?r.json():null; }).then(function(doc){
@@ -1846,20 +1872,26 @@ function openWorkInfo(){
   $('#woInfoBody').innerHTML=h; openSheet('sheetWorkInfo');
 }
 $('#bWorkInfo').onclick=function(e){ if(e&&e.stopPropagation) e.stopPropagation(); openWorkInfo(); };
-function woRow(label,val,cls){ return '<div class="worow"><div class="wl">'+label+'</div><div class="wv'+(cls?' '+cls:'')+'">'+escapeHtml(val||'\u2014')+'</div></div>'; }
-function openWorkOrder(i){
-  const o=workOrders[i]; if(!o) return; _woCur=o;
-  const badge=(o.wi===0)?'<span class="wobadge cur">This week</span>':'<span class="wobadge old">Prior week</span>';
-  let h='';
-  if(o.src) h+=woRow('Work source',o.src);
-  if(o.reporter) h+=woRow('Reported by',o.reporter);
-  h+=woRow('LSD',o.raw,'big');
-  if(o.pipeline) h+=woRow('Pipeline',o.pipeline);
-  h+=woRow('Work',o.desc);
-  if(o.line) h+=woRow('Line status',o.line);
-  if(o.work) h+=woRow('Work status',o.work);
-  h+='<div class="worow"><div class="wl">Reported</div><div class="wv">'+escapeHtml(o.week||'\u2014')+' '+badge+'</div></div>';
-  $('#woBody').innerHTML=h; openSheet('sheetWork');
+function woField(label,val,cls){ return '<div class="wo-f"><div class="wo-fl">'+label+'</div><div class="wo-fv'+(cls?' '+cls:'')+'">'+escapeHtml(val||'\u2014')+'</div></div>'; }
+function woCard(o){
+  var badge=(o.wi===0)?'<span class="wobadge cur">This week</span>':'<span class="wobadge old">Prior week</span>';
+  var h='';
+  if(o.src) h+=woField('Work source',o.src);
+  if(o.reporter) h+=woField('Reported by',o.reporter);
+  h+=woField('LSD',o.raw,'big');
+  if(o.pipeline) h+=woField('Pipeline',o.pipeline);
+  h+=woField('Work',o.desc);
+  if(o.line) h+=woField('Line status',o.line);
+  if(o.work) h+=woField('Work status',o.work);
+  h+='<div class="wo-f"><div class="wo-fl">Reported</div><div class="wo-fv">'+escapeHtml(o.week||'\u2014')+' '+badge+'</div></div>';
+  return '<div class="wo-card">'+h+'</div>';
+}
+function openWorkOrders(list){
+  if(!list||!list.length) return; _woCur={_ll:list[0]._ll};
+  var multi=list.length>1;
+  var note=multi?('<div class="hint" style="margin-bottom:10px">'+list.length+' reports at this LSD \u2014 check each so nothing is missed.</div>'):'';
+  $('#woBody').innerHTML=note+'<div class="wo-cols '+(multi?'multi':'one')+'">'+list.map(woCard).join('')+'</div>';
+  openSheet('sheetWork');
 }
 $('#woGoto').onclick=function(){ if(_woCur&&_woCur._ll){ setFollow(false); map.setView(_woCur._ll,16); closeSheets(); } };
 function applyWork(){ if(settings.work){ if(!map.hasLayer(woLayer)) woLayer.addTo(map); } else { if(map.hasLayer(woLayer)) map.removeLayer(woLayer); } }
