@@ -1,5 +1,32 @@
 {
- "updated": "2026-08-31T20:47:50Z",
+ "updated": "2026-09-01T00:34:56Z",
+ "emails": [
+  {
+   "source": "Trevor (Plains)",
+   "date": "2026-08-28T16:49:18+00:00",
+   "week": 0
+  },
+  {
+   "source": "David Hoppe (Keyera)",
+   "date": "2026-08-28T13:58:59+00:00",
+   "week": 0
+  },
+  {
+   "source": "David Hoppe (Keyera)",
+   "date": "2026-08-20T19:56:18+00:00",
+   "week": 1
+  },
+  {
+   "source": "David Hoppe (Keyera)",
+   "date": "2026-08-14T18:49:02+00:00",
+   "week": 2
+  },
+  {
+   "source": "Trevor (Plains)",
+   "date": "2026-08-14T15:48:41+00:00",
+   "week": 1
+  }
+ ],
  "orders": [
   {
    "raw": "15-33-035-02W5",
