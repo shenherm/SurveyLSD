@@ -470,7 +470,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09ao';
+var swReg=null, APP_VERSION='2026.08.09ap';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -655,6 +655,15 @@ if(!map.getPane('refPane')){ map.createPane('refPane'); map.getPane('refPane').s
 const refLabels=offlineLayer(refUrl(),{maxZoom:21,maxNativeZoom:16,pane:'refPane',layerId:'reflabels',subdomains:'abcd',attribution:'&copy; OpenStreetMap, &copy; CARTO',updateWhenIdle:true,updateWhenZooming:false,keepBuffer:4});
 const refLayer=L.layerGroup([refLabels]);
 const REF_LAYERS=[refLabels];
+/* Safety net: the labels overlay holds its tiles during a zoom/pan and reloads on release.
+   If that release-redraw is ever missed it can get stuck showing big, scaled letters from a
+   stale zoom. On every zoom/pan end, force it back to the current view. _resetView reuses the
+   tiles it already has, so this is cheap and doesn't flash when it's already correct. */
+map.on('zoomend moveend', function(){
+  if(!map.hasLayer(refLayer) || !refLabels._map) return;
+  try{ refLabels._resetView(); }
+  catch(e){ try{ refLabels.redraw(); }catch(e2){} }
+});
 const REF_DL_ZMAX=15;   // cache labels up to z15 (overzoomed above) to keep downloads light
 
 // One base layer at a time for speed (old iPads). Esri online by default;
