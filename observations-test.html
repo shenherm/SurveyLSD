@@ -2726,6 +2726,7 @@ function setAppH(){
   var ae=document.activeElement, typing=ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA');
   if(vv && typing){
     var kb=Math.max(0, Math.round(window.innerHeight - vv.height - (vv.offsetTop||0)));
+    if(kb>0) kb+=34;   // clearance so the action button fully clears the keyboard (measured height runs short)
     document.documentElement.style.setProperty('--kb', kb+'px');   // keyboard height; sheet lifts above it
     return;                                                          // keep --appH stable (no dark background band)
   }
