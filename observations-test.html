@@ -82,13 +82,13 @@
     background:linear-gradient(180deg,#0f2c1d,#0b2216);
     box-shadow:0 0 0 1px rgba(55,210,123,.22), 0 4px 14px rgba(0,0,0,.45)}
 
-  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:700;
+  .sheet{position:absolute;left:0;right:0;bottom:var(--kb,0px);z-index:700;
     background:linear-gradient(180deg,var(--panel-hi),var(--panel) 150px);
     border-top:1px solid var(--line);border-radius:20px 20px 0 0;
     box-shadow:0 -14px 44px rgba(0,0,0,.55);
     padding:14px 14px max(16px,env(safe-area-inset-bottom));
     transform:translateY(110%);visibility:hidden;
-    transition:transform .24s cubic-bezier(.22,.61,.36,1), visibility 0s linear .24s;max-height:74%;overflow:auto}
+    transition:transform .24s cubic-bezier(.22,.61,.36,1), visibility 0s linear .24s;max-height:min(74%, calc(var(--appH,100vh) - var(--kb,0px) - 14px));overflow:auto}
   .sheet.open{transform:translateY(0);visibility:visible;transition:transform .26s cubic-bezier(.22,.61,.36,1), visibility 0s}
   .sheet::before{content:"";display:block;width:40px;height:4px;border-radius:2px;background:#3a444f;margin:-2px auto 14px}
   .sheet h2{margin:2px 0 12px;font-size:16px;font-weight:700;letter-spacing:.2px}
@@ -277,6 +277,7 @@
   <div class="row" style="margin-bottom:4px"><button class="act ghost" id="obsViewAll">View all observations</button></div>
   <div class="obs-fld"><label>System (pipeline)</label><select id="obsSystem"></select></div>
   <div class="obs-fld"><label>LSD</label><input type="text" id="obsLsd" autocapitalize="characters"></div>
+  <div class="obs-fld"><label>Lat / Lon</label><input type="text" id="obsCoord"></div>
   <div class="obs-fld"><label>Time overhead</label><input type="text" id="obsTime"></div>
   <div class="obs-fld"><label>Observation</label><textarea id="obsText" placeholder="Describe what you're reporting..."></textarea></div>
   <div class="obs-fld"><label>Risk</label><div class="obs-risk-row"><button class="obs-risk-btn high" id="obsRiskHigh">High risk</button><button class="obs-risk-btn low" id="obsRiskLow">Low risk</button></div></div>
@@ -362,6 +363,7 @@
   .obs-row1 .obs-time{margin-left:auto;font-family:var(--mono);color:var(--muted);font-size:12px;flex:none}
   .obs-risk-tag{font-size:10px;font-weight:800;padding:2px 7px;border-radius:5px;letter-spacing:.5px;flex:none}
   .obs-lsd{font-family:var(--mono);font-size:13px;color:var(--amber);margin-top:3px}
+  .obs-coord{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px}
   .obs-obs{font-size:13px;color:var(--ink);margin-top:3px;white-space:pre-wrap;word-break:break-word}
   .obs-empty{color:var(--muted);text-align:center;padding:22px}
   #obsTestBadge{position:fixed;top:calc(env(safe-area-inset-top,0px) + 4px);left:50%;transform:translateX(-50%);z-index:1500;background:#7a1fa2;color:#fff;font-size:10px;font-weight:700;padding:3px 11px;border-radius:8px;letter-spacing:.6px;pointer-events:none}
@@ -2075,6 +2077,13 @@ const OBS_COL={high:'#ff0000', low:'#00ccff'};
 let obsLayer=L.layerGroup().addTo(map);
 let _obsEdit=null,_obsLat=null,_obsLon=null,_obsRisk='low';
 
+function _obsTimeKey(o){ var m=/^\s*(\d{1,2}):(\d{2})/.exec(o.time||''); return m?((+m[1])*60+(+m[2])):null; }
+function obsSorted(){ return observations.slice().sort(function(a,b){
+  var ka=_obsTimeKey(a), kb=_obsTimeKey(b);
+  if(ka!=null && kb!=null && ka!==kb) return ka-kb;      // oldest time first
+  return (a.created||0)-(b.created||0);                  // fallback / tiebreak: capture order
+}); }
+
 function renderObsMarkers(){
   obsLayer.clearLayers();
   observations.forEach(function(o){
@@ -2085,6 +2094,7 @@ function renderObsMarkers(){
   });
 }
 function _obsNow(){ var d=new Date(); var p=function(n){return(''+n).padStart(2,'0');}; return p(d.getHours())+':'+p(d.getMinutes()); }
+function _obsCoordStr(la,lo){ return (la==null||lo==null)?'':(la.toFixed(6)+', '+lo.toFixed(6)); }
 function _distSeg(px,py,ax,ay,bx,by){ var dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
   var t=l2?((px-ax)*dx+(py-ay)*dy)/l2:0; if(t<0)t=0; if(t>1)t=1;
   var cx=ax+t*dx,cy=ay+t*dy; return Math.hypot(px-cx,py-cy); }
@@ -2116,6 +2126,7 @@ function openNewObs(){
   $('#obsNewTitle').textContent='New observation'; $('#obsDelete').style.display='none';
   obsPopulateSystems();
   $('#obsLsd').value=(($('#lsd').textContent)||'').trim();
+  $('#obsCoord').value=_obsCoordStr(c.lat,c.lng);
   $('#obsTime').value=_obsNow(); $('#obsText').value=''; setObsRisk('low');
   openSheet('sheetObsNew');
   closestActiveLine().then(function(k){ if(k && _obsEdit===null) $('#obsSystem').value=k.id; });
@@ -2128,26 +2139,28 @@ function openObsView(id){
   var sel=$('#obsSystem'), matched=false;
   Array.prototype.forEach.call(sel.options,function(op){ if(op.textContent===o.system){ sel.value=op.value; matched=true; } });
   if(!matched && o.system){ var op=document.createElement('option'); op.value='__keep'; op.textContent=o.system; op.selected=true; sel.appendChild(op); }
-  $('#obsLsd').value=o.lsd||''; $('#obsTime').value=o.time||''; $('#obsText').value=o.obs||''; setObsRisk(o.risk||'low');
+  $('#obsLsd').value=o.lsd||''; $('#obsCoord').value=o.coord||_obsCoordStr(o.lat,o.lon);
+  $('#obsTime').value=o.time||''; $('#obsText').value=o.obs||''; setObsRisk(o.risk||'low');
   openSheet('sheetObsNew');
 }
 function saveObsRecord(){
   var sel=$('#obsSystem'); var sysName=(sel.selectedOptions&&sel.selectedOptions.length)?sel.selectedOptions[0].textContent:'';
   if(sysName.indexOf('(no lines')===0) sysName='';
-  var rec={ id:_obsEdit||('o'+Date.now()), system:sysName, lsd:$('#obsLsd').value.trim(), obs:$('#obsText').value.trim(),
-    time:$('#obsTime').value.trim(), risk:_obsRisk, lat:_obsLat, lon:_obsLon, created:Date.now() };
+  var rec={ id:_obsEdit||('o'+Date.now()), system:sysName, lsd:$('#obsLsd').value.trim(), coord:$('#obsCoord').value.trim(),
+    obs:$('#obsText').value.trim(), time:$('#obsTime').value.trim(), risk:_obsRisk, lat:_obsLat, lon:_obsLon, created:Date.now() };
   if(_obsEdit){ var i=observations.findIndex(function(o){return o.id===_obsEdit;});
     if(i>=0){ rec.lat=observations[i].lat; rec.lon=observations[i].lon; rec.created=observations[i].created; observations[i]=rec; } }
-  else observations.unshift(rec);
+  else observations.push(rec);
   saveObs(); renderObsMarkers(); closeSheets(); toast('Observation saved');
 }
 function openObsList(){
-  var box=$('#obsList');
-  if(!observations.length){ box.innerHTML='<div class="obs-empty">No observations yet.</div>'; }
-  else { box.innerHTML=observations.map(function(o){ var col=OBS_COL[o.risk]||OBS_COL.low;
+  var box=$('#obsList'); var list=obsSorted();
+  if(!list.length){ box.innerHTML='<div class="obs-empty">No observations yet.</div>'; }
+  else { box.innerHTML=list.map(function(o){ var col=OBS_COL[o.risk]||OBS_COL.low;
       return '<div class="obs-item" data-id="'+o.id+'" style="border-left-color:'+col+'">'
         +'<div class="obs-row1"><span class="obs-risk-tag" style="background:'+col+';color:'+(o.risk==='low'?'#062733':'#fff')+'">'+(o.risk==='high'?'HIGH':'LOW')+'</span> <b>'+escapeHtml(o.system||'\u2014')+'</b><span class="obs-time">'+escapeHtml(o.time||'')+'</span></div>'
         +'<div class="obs-lsd">'+escapeHtml(o.lsd||'')+'</div>'
+        +(o.coord?'<div class="obs-coord">'+escapeHtml(o.coord)+'</div>':'')
         +(o.obs?'<div class="obs-obs">'+escapeHtml(o.obs)+'</div>':'')+'</div>';
     }).join('');
     box.querySelectorAll('.obs-item').forEach(function(el){ el.onclick=function(){ openObsView(el.getAttribute('data-id')); }; }); }
@@ -2164,13 +2177,18 @@ function exportObsPDF(){
     var jsPDF=window.jspdf.jsPDF; var doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
     doc.setFontSize(14); doc.text('EasyLSD \u2014 Observation Report', 14, 15);
     doc.setFontSize(9); doc.setTextColor(120); doc.text(new Date().toLocaleString(), 14, 21); doc.setTextColor(0);
-    var rows=observations.map(function(o){ return [o.system||'', o.lsd||'', o.obs||'', o.time||'']; });
-    doc.autoTable({ startY:26, head:[['System','LSD','Observation','Time']], body:rows,
+    var sorted=obsSorted();
+    var body=sorted.map(function(o){ return ['', o.system||'', o.lsd||'', o.coord||'', o.obs||'', o.time||'']; });
+    doc.autoTable({ startY:26,
+      head:[['', 'System','LSD','Lat/Lon','Observation','Time']], body:body,
       styles:{fontSize:9,cellPadding:2.2,valign:'top',lineColor:[205,205,205],lineWidth:0.1,overflow:'linebreak'},
       headStyles:{fillColor:[30,38,48],textColor:255},
-      columnStyles:{0:{cellWidth:50},1:{cellWidth:48},3:{cellWidth:22}},
-      didParseCell:function(data){ if(data.section==='body'){ var o=observations[data.row.index];
-        if(o) data.cell.styles.fillColor=(o.risk==='high')?[255,224,224]:[219,243,255]; } } });
+      columnStyles:{0:{cellWidth:3,cellPadding:0},1:{cellWidth:40},2:{cellWidth:40},3:{cellWidth:38},5:{cellWidth:20}},
+      didParseCell:function(data){ if(data.section==='body'){ var o=sorted[data.row.index]; if(o){
+        var rc=(o.risk==='high')?[255,0,0]:[0,204,255];
+        if(data.column.index===0){ data.cell.styles.fillColor=rc; }                              // solid colour flag, left of each row
+        else { data.cell.styles.fillColor=(o.risk==='high')?[255,224,224]:[219,243,255]; }        // light risk tint on data cells
+      } } } });
     var blob=doc.output('blob'), url=URL.createObjectURL(blob);
     var w=window.open(url,'_blank');
     if(!w){ var a=document.createElement('a'); a.href=url; a.download='observations.pdf'; document.body.appendChild(a); a.click(); a.remove(); }
@@ -2704,13 +2722,23 @@ function resyncSoon(){ resyncMap(); setTimeout(resyncMap,250); }   // iOS finali
 /* Anchor the UI to the REAL visible height (not iOS's stale fixed-viewport), so the bottom dock
    can't get pushed off-screen after the app is backgrounded mid-flight and resumed. */
 function setAppH(){
-  var h=(window.visualViewport&&window.visualViewport.height)?window.visualViewport.height:window.innerHeight;
+  var vv=window.visualViewport;
+  var ae=document.activeElement, typing=ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA');
+  if(vv && typing){
+    var kb=Math.max(0, Math.round(window.innerHeight - vv.height - (vv.offsetTop||0)));
+    document.documentElement.style.setProperty('--kb', kb+'px');   // keyboard height; sheet lifts above it
+    return;                                                          // keep --appH stable (no dark background band)
+  }
+  document.documentElement.style.setProperty('--kb','0px');
+  var h=(vv&&vv.height)?vv.height:window.innerHeight;
   if(h) document.documentElement.style.setProperty('--appH', Math.round(h)+'px');
 }
 setAppH();
 if(window.visualViewport){
   window.visualViewport.addEventListener('resize', function(){ setAppH(); try{ map&&map.invalidateSize(false); }catch(e){} });
   window.visualViewport.addEventListener('scroll', setAppH);
+  window.addEventListener('focusin', setAppH);
+  window.addEventListener('focusout', function(){ setTimeout(setAppH,60); });
 }
 document.addEventListener('visibilitychange',function(){ if(!document.hidden) resyncSoon(); });
 window.addEventListener('pageshow',resyncSoon);
