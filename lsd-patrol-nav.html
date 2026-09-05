@@ -511,7 +511,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09aq';
+var swReg=null, APP_VERSION='2026.08.09ar';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1871,10 +1871,23 @@ function WO_SVG(cur){
     +'<rect x="12.7" y="7.5" width="2.6" height="8.5" rx="1.3" fill="#241200"/>'
     +'<circle cx="14" cy="19.8" r="1.7" fill="#241200"/></svg></div>';
 }
+var _WO_M={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+function _woWeekEnd(s){                    // parse the reported week string -> its end date
+  if(!s) return null;
+  var m=/([A-Za-z]{3,})\.?\s*(\d{1,2})\s*[-\u2013]\s*(\d{1,2}),?\s*(\d{4})/.exec(s);
+  if(!m) return null; var mo=_WO_M[m[1].slice(0,3).toLowerCase()]; if(mo==null) return null;
+  var d=new Date(+m[4], mo, +m[3]); return isNaN(d.getTime())?null:d;
+}
+function _woIsCurrent(o){                  // "this week" = the reported week ended within the last ~8 days (NOT when the email arrived)
+  var d=_woWeekEnd(o.week);
+  if(!d) return o.wi===0;                  // undated week: fall back to how it was fetched
+  return Math.floor((Date.now()-d.getTime())/86400000) <= 8;
+}
 function renderWorkOrders(){
   woLayer.clearLayers();
   var groups={};
   workOrders.forEach(function(o){
+    o.wi = _woIsCurrent(o) ? 0 : 1;        // amber(this week)/grey(older) by the reported week, so stale reports stay grey
     var q=(o.kind==='qtr')?{qtr:o.sub,sec:o.sec,twp:o.twp,rge:o.rge,mer:o.mer}
                           :{lsd:o.sub,sec:o.sec,twp:o.twp,rge:o.rge,mer:o.mer};
     var ll=lsdToLatLon(q); if(!ll) return; o._ll=[ll.lat,ll.lon];
