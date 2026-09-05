@@ -82,13 +82,13 @@
     background:linear-gradient(180deg,#0f2c1d,#0b2216);
     box-shadow:0 0 0 1px rgba(55,210,123,.22), 0 4px 14px rgba(0,0,0,.45)}
 
-  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:700;
+  .sheet{position:absolute;left:0;right:0;bottom:var(--kb,0px);z-index:700;
     background:linear-gradient(180deg,var(--panel-hi),var(--panel) 150px);
     border-top:1px solid var(--line);border-radius:20px 20px 0 0;
     box-shadow:0 -14px 44px rgba(0,0,0,.55);
     padding:14px 14px max(16px,env(safe-area-inset-bottom));
     transform:translateY(110%);visibility:hidden;
-    transition:transform .24s cubic-bezier(.22,.61,.36,1), visibility 0s linear .24s;max-height:74%;overflow:auto}
+    transition:transform .24s cubic-bezier(.22,.61,.36,1), visibility 0s linear .24s;max-height:min(74%, calc(var(--appH,100vh) - var(--kb,0px) - 14px));overflow:auto}
   .sheet.open{transform:translateY(0);visibility:visible;transition:transform .26s cubic-bezier(.22,.61,.36,1), visibility 0s}
   .sheet::before{content:"";display:block;width:40px;height:4px;border-radius:2px;background:#3a444f;margin:-2px auto 14px}
   .sheet h2{margin:2px 0 12px;font-size:16px;font-weight:700;letter-spacing:.2px}
@@ -234,6 +234,7 @@
   <button class="btn" id="bPin"><svg class="ic" viewBox="0 0 24 24"><path d="M12 21s6-5.7 6-11a6 6 0 1 0-12 0c0 5.3 6 11 6 11z"/><circle cx="12" cy="10" r="2.2"/></svg><span class="lbl">Pin</span></button>
   <button class="btn" id="bDrive"><svg class="ic" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg><span class="lbl">Drive</span></button>
   <button class="btn" id="bKml"><svg class="ic" viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 9-9"/><circle cx="3" cy="17" r="1.7"/><circle cx="21" cy="5" r="1.7"/></svg><span class="lbl">Lines</span></button>
+  <button class="btn" id="bReport"><svg class="ic" viewBox="0 0 24 24"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4.5V3.5h6v1"/><path d="M9 10h6M9 13.5h6M9 17h4"/></svg><span class="lbl">Report</span></button>
   <button class="btn" id="bSettings"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3.2M12 18.3v3.2M2.5 12h3.2M18.3 12h3.2M5 5l2.2 2.2M16.8 16.8L19 19M19 5l-2.2 2.2M7.2 16.8L5 19"/></svg><span class="lbl">Settings</span></button>
 </div>
 
@@ -269,6 +270,26 @@
   <div class="hint">Confirms the app has the latest client reports loaded.</div>
   <div id="woInfoBody"></div>
 </div>
+
+<div class="sheet" id="sheetObsNew">
+  <button class="close" data-close>&times;</button>
+  <h2 id="obsNewTitle">New observation</h2>
+  <div class="row" style="margin-bottom:4px"><button class="act ghost" id="obsViewAll">View all observations</button></div>
+  <div class="obs-fld"><label>System (pipeline)</label><select id="obsSystem"></select></div>
+  <div class="obs-fld"><label>LSD</label><input type="text" id="obsLsd" autocapitalize="characters"></div>
+  <div class="obs-fld"><label>Lat / Lon</label><input type="text" id="obsCoord"></div>
+  <div class="obs-fld"><label>Time overhead</label><input type="text" id="obsTime"></div>
+  <div class="obs-fld"><label>Observation</label><textarea id="obsText" placeholder="Describe what you're reporting..."></textarea></div>
+  <div class="obs-fld"><label>Risk</label><div class="obs-risk-row"><button class="obs-risk-btn high" id="obsRiskHigh">High risk</button><button class="obs-risk-btn low" id="obsRiskLow">Low risk</button></div></div>
+  <div class="row"><button class="act ghost" id="obsDelete" style="display:none;flex:0 0 auto;color:#ff5f5f">Delete</button><button class="act amber" id="obsSave" style="flex:1">Save observation</button></div>
+</div>
+<div class="sheet" id="sheetObsList">
+  <button class="close" data-close>&times;</button>
+  <h2>Observations</h2>
+  <div class="row" style="margin-bottom:8px"><button class="act" id="obsNew2" style="flex:1">+ New observation</button><button class="act ghost" id="obsExport" style="flex:0 0 auto">Export PDF</button></div>
+  <div id="obsList"></div>
+</div>
+
 
 <div class="sheet" id="sheetKey">
   <button class="close" data-close>&times;</button>
@@ -325,6 +346,26 @@
 .wo-fl{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
 .wo-fv{font-size:14px;color:var(--ink);margin-top:1px;word-break:break-word}
 .wo-fv.big{font-family:var(--mono);font-size:15px}
+
+  /* ---- Observation reporting ---- */
+  .obs-fld{margin:11px 0}
+  .obs-fld label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px}
+  .obs-fld select,.obs-fld input,.obs-fld textarea{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:11px;font-size:15px;font-family:inherit;-webkit-appearance:none}
+  .obs-fld textarea{min-height:92px;resize:vertical;line-height:1.4}
+  .obs-risk-row{display:flex;gap:8px}
+  .obs-risk-btn{flex:1;border:2px solid var(--line);border-radius:10px;padding:12px;font-weight:700;font-size:14px;background:var(--panel2);color:var(--muted);cursor:pointer}
+  .obs-risk-btn.on.high{border-color:#ff0000;color:#fff;background:#ff0000}
+  .obs-risk-btn.on.low{border-color:#00ccff;color:#062733;background:#00ccff}
+  .obs-item{border:1px solid var(--line);border-left:6px solid #00ccff;border-radius:10px;padding:9px 12px;margin-bottom:9px;cursor:pointer;background:var(--panel2)}
+  .obs-row1{display:flex;align-items:center;gap:8px;font-size:14px}
+  .obs-row1 b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .obs-row1 .obs-time{margin-left:auto;font-family:var(--mono);color:var(--muted);font-size:12px;flex:none}
+  .obs-risk-tag{font-size:10px;font-weight:800;padding:2px 7px;border-radius:5px;letter-spacing:.5px;flex:none}
+  .obs-lsd{font-family:var(--mono);font-size:13px;color:var(--amber);margin-top:3px}
+  .obs-coord{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px}
+  .obs-obs{font-size:13px;color:var(--ink);margin-top:3px;white-space:pre-wrap;word-break:break-word}
+  .obs-empty{color:var(--muted);text-align:center;padding:22px}
+
 .tgl{flex:none;width:52px;height:31px;border-radius:16px;border:1px solid var(--line);background:var(--panel2);position:relative;cursor:pointer;transition:background .15s,border-color .15s;padding:0}
 .tgl::after{content:'';position:absolute;top:2px;left:2px;width:25px;height:25px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.4)}
 .tgl.on{background:var(--amber);border-color:var(--amber)}
@@ -470,7 +511,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09ap';
+var swReg=null, APP_VERSION='2026.08.09aq';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -2027,6 +2068,142 @@ $('#bDrive').onclick=function(){
 };
 if(DRIVE_CLIENT_ID && navigator.onLine!==false){ loadGIS().then(initTok).catch(function(){}); }
 
+/* ================= OBSERVATION REPORTING ================= */
+let observations=JSON.parse(localStorage.getItem('observations')||'[]');
+function saveObs(){ try{ localStorage.setItem('observations',JSON.stringify(observations)); }catch(e){} }
+const OBS_COL={high:'#ff0000', low:'#00ccff'};
+let obsLayer=L.layerGroup().addTo(map);
+let _obsEdit=null,_obsLat=null,_obsLon=null,_obsRisk='low';
+
+function _obsTimeKey(o){ var m=/^\s*(\d{1,2}):(\d{2})/.exec(o.time||''); return m?((+m[1])*60+(+m[2])):null; }
+function obsSorted(){ return observations.slice().sort(function(a,b){
+  var ka=_obsTimeKey(a), kb=_obsTimeKey(b);
+  if(ka!=null && kb!=null && ka!==kb) return ka-kb;
+  return (a.created||0)-(b.created||0);
+}); }
+function renderObsMarkers(){
+  obsLayer.clearLayers();
+  observations.forEach(function(o){
+    if(o.lat==null||o.lon==null) return;
+    var col=OBS_COL[o.risk]||OBS_COL.low;
+    L.circleMarker([o.lat,o.lon],{radius:7,color:'#0a0d11',weight:2,fillColor:col,fillOpacity:1})
+      .on('click',function(){ openObsView(o.id); }).addTo(obsLayer);
+  });
+}
+function _obsNow(){ var d=new Date(); var p=function(n){return(''+n).padStart(2,'0');}; return p(d.getHours())+':'+p(d.getMinutes()); }
+function _obsCoordStr(la,lo){ return (la==null||lo==null)?'':(la.toFixed(6)+', '+lo.toFixed(6)); }
+function _distSeg(px,py,ax,ay,bx,by){ var dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
+  var t=l2?((px-ax)*dx+(py-ay)*dy)/l2:0; if(t<0)t=0; if(t>1)t=1;
+  var cx=ax+t*dx,cy=ay+t*dy; return Math.hypot(px-cx,py-cy); }
+function _obsPairs(p){ if(!p||!p.length) return []; if(Array.isArray(p[0])) return p;
+  var out=[]; for(var i=0;i+1<p.length;i+=2) out.push([p[i],p[i+1]]); return out; }
+function closestActiveLine(){
+  var active=kmls.filter(function(k){return k.on;});
+  if(!active.length) return Promise.resolve(null);
+  var cp=map.latLngToLayerPoint(map.getCenter());
+  return Promise.all(active.map(function(k){
+    return idbGet(k.id).then(function(g){
+      var best=Infinity;
+      if(g&&g.lines){ for(var i=0;i<g.lines.length;i++){ var pts=_obsPairs(g.lines[i].p),prev=null;
+        for(var j=0;j<pts.length;j++){ var pp=map.latLngToLayerPoint(L.latLng(pts[j][0],pts[j][1]));
+          if(prev){ var d=_distSeg(cp.x,cp.y,prev.x,prev.y,pp.x,pp.y); if(d<best)best=d; } prev=pp; } } }
+      return {k:k,d:best};
+    }).catch(function(){ return {k:k,d:Infinity}; });
+  })).then(function(res){ res.sort(function(a,b){return a.d-b.d;}); return (res[0]&&res[0].d<Infinity)?res[0].k:null; });
+}
+function obsPopulateSystems(){
+  var sel=$('#obsSystem'); sel.innerHTML='';
+  var active=kmls.filter(function(k){return k.on;});
+  if(!active.length){ var o=document.createElement('option'); o.value=''; o.textContent='(no lines turned on)'; sel.appendChild(o); return; }
+  active.forEach(function(k){ var o=document.createElement('option'); o.value=k.id; o.textContent=k.name; sel.appendChild(o); });
+}
+function setObsRisk(r){ _obsRisk=r; $('#obsRiskHigh').classList.toggle('on',r==='high'); $('#obsRiskLow').classList.toggle('on',r==='low'); }
+function openNewObs(){
+  _obsEdit=null; var c=map.getCenter(); _obsLat=c.lat; _obsLon=c.lng;
+  $('#obsNewTitle').textContent='New observation'; $('#obsDelete').style.display='none';
+  obsPopulateSystems();
+  $('#obsLsd').value=(($('#lsd').textContent)||'').trim();
+  $('#obsCoord').value=_obsCoordStr(c.lat,c.lng);
+  $('#obsTime').value=_obsNow(); $('#obsText').value=''; setObsRisk('low');
+  openSheet('sheetObsNew');
+  closestActiveLine().then(function(k){ if(k && _obsEdit===null) $('#obsSystem').value=k.id; });
+}
+function openObsView(id){
+  var o=observations.find(function(x){return x.id===id;}); if(!o) return;
+  _obsEdit=id; _obsLat=o.lat; _obsLon=o.lon;
+  $('#obsNewTitle').textContent='Edit observation'; $('#obsDelete').style.display='';
+  obsPopulateSystems();
+  var sel=$('#obsSystem'), matched=false;
+  Array.prototype.forEach.call(sel.options,function(op){ if(op.textContent===o.system){ sel.value=op.value; matched=true; } });
+  if(!matched && o.system){ var op=document.createElement('option'); op.value='__keep'; op.textContent=o.system; op.selected=true; sel.appendChild(op); }
+  $('#obsLsd').value=o.lsd||''; $('#obsCoord').value=o.coord||_obsCoordStr(o.lat,o.lon);
+  $('#obsTime').value=o.time||''; $('#obsText').value=o.obs||''; setObsRisk(o.risk||'low');
+  openSheet('sheetObsNew');
+}
+function saveObsRecord(){
+  var sel=$('#obsSystem'); var sysName=(sel.selectedOptions&&sel.selectedOptions.length)?sel.selectedOptions[0].textContent:'';
+  if(sysName.indexOf('(no lines')===0) sysName='';
+  var rec={ id:_obsEdit||('o'+Date.now()), system:sysName, lsd:$('#obsLsd').value.trim(), coord:$('#obsCoord').value.trim(),
+    obs:$('#obsText').value.trim(), time:$('#obsTime').value.trim(), risk:_obsRisk, lat:_obsLat, lon:_obsLon, created:Date.now() };
+  if(_obsEdit){ var i=observations.findIndex(function(o){return o.id===_obsEdit;});
+    if(i>=0){ rec.lat=observations[i].lat; rec.lon=observations[i].lon; rec.created=observations[i].created; observations[i]=rec; } }
+  else observations.push(rec);
+  saveObs(); renderObsMarkers(); closeSheets(); toast('Observation saved');
+}
+function openObsList(){
+  var box=$('#obsList'); var list=obsSorted();
+  if(!list.length){ box.innerHTML='<div class="obs-empty">No observations yet.</div>'; }
+  else { box.innerHTML=list.map(function(o){ var col=OBS_COL[o.risk]||OBS_COL.low;
+      return '<div class="obs-item" data-id="'+o.id+'" style="border-left-color:'+col+'">'
+        +'<div class="obs-row1"><span class="obs-risk-tag" style="background:'+col+';color:'+(o.risk==='low'?'#062733':'#fff')+'">'+(o.risk==='high'?'HIGH':'LOW')+'</span> <b>'+escapeHtml(o.system||'\u2014')+'</b><span class="obs-time">'+escapeHtml(o.time||'')+'</span></div>'
+        +'<div class="obs-lsd">'+escapeHtml(o.lsd||'')+'</div>'
+        +(o.coord?'<div class="obs-coord">'+escapeHtml(o.coord)+'</div>':'')
+        +(o.obs?'<div class="obs-obs">'+escapeHtml(o.obs)+'</div>':'')+'</div>';
+    }).join('');
+    box.querySelectorAll('.obs-item').forEach(function(el){ el.onclick=function(){ openObsView(el.getAttribute('data-id')); }; }); }
+  openSheet('sheetObsList');
+}
+function _obsLoadScript(src){ return new Promise(function(res,rej){ var s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=function(){rej(new Error('load failed'));}; document.head.appendChild(s); }); }
+function _obsLoadPDF(){ if(window.jspdf&&window.jspdf.jsPDF) return Promise.resolve();
+  return _obsLoadScript('vendor/jspdf.umd.min.js')
+    .then(function(){ return _obsLoadScript('vendor/jspdf.plugin.autotable.min.js'); }); }
+function exportObsPDF(){
+  if(!observations.length){ toast('No observations to export'); return; }
+  toast('Building PDF\u2026');
+  _obsLoadPDF().then(function(){
+    var jsPDF=window.jspdf.jsPDF; var doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+    doc.setFontSize(14); doc.text('EasyLSD \u2014 Observation Report', 14, 15);
+    doc.setFontSize(9); doc.setTextColor(120); doc.text(new Date().toLocaleString(), 14, 21); doc.setTextColor(0);
+    var sorted=obsSorted();
+    var body=sorted.map(function(o){ return ['', o.system||'', o.lsd||'', o.coord||'', o.obs||'', o.time||'']; });
+    doc.autoTable({ startY:26,
+      head:[['', 'System','LSD','Lat/Lon','Observation','Time']], body:body,
+      styles:{fontSize:9,cellPadding:2.2,valign:'top',lineColor:[205,205,205],lineWidth:0.1,overflow:'linebreak'},
+      headStyles:{fillColor:[30,38,48],textColor:255},
+      columnStyles:{0:{cellWidth:3,cellPadding:0},1:{cellWidth:40},2:{cellWidth:40},3:{cellWidth:38},5:{cellWidth:20}},
+      didParseCell:function(data){ if(data.section==='body'){ var o=sorted[data.row.index]; if(o){
+        var rc=(o.risk==='high')?[255,0,0]:[0,204,255];
+        if(data.column.index===0){ data.cell.styles.fillColor=rc; }
+        else { data.cell.styles.fillColor=(o.risk==='high')?[255,224,224]:[219,243,255]; }
+      } } } });
+    var blob=doc.output('blob'), url=URL.createObjectURL(blob);
+    var w=window.open(url,'_blank');
+    if(!w){ var a=document.createElement('a'); a.href=url; a.download='observations.pdf'; document.body.appendChild(a); a.click(); a.remove(); }
+    toast('PDF ready \u2014 use Share to save or print');
+  }).catch(function(){ toast('Could not build the PDF \u2014 open the app once with signal, then retry'); });
+}
+$('#bReport').onclick=openNewObs;
+$('#obsViewAll').onclick=openObsList;
+$('#obsNew2').onclick=openNewObs;
+$('#obsExport').onclick=exportObsPDF;
+$('#obsSave').onclick=saveObsRecord;
+$('#obsDelete').onclick=function(){ if(!_obsEdit) return; observations=observations.filter(function(o){return o.id!==_obsEdit;}); saveObs(); renderObsMarkers(); closeSheets(); toast('Observation deleted'); };
+$('#obsRiskHigh').onclick=function(){ setObsRisk('high'); };
+$('#obsRiskLow').onclick=function(){ setObsRisk('low'); };
+renderObsMarkers();
+/* =============== END OBSERVATION REPORTING =============== */
+
+
 /* ---------- One-click offline imagery download for the current view ---------- */
 const DL_TILE_CAP=400000;            // absolute backstop (~9GB); the practical limit is the device's free storage, checked live
 const DL_STORE_MARGIN=250*1024*1024; // always leave at least this much device storage free
@@ -2542,13 +2719,24 @@ function resyncSoon(){ resyncMap(); setTimeout(resyncMap,250); }   // iOS finali
 /* Anchor the UI to the REAL visible height (not iOS's stale fixed-viewport), so the bottom dock
    can't get pushed off-screen after the app is backgrounded mid-flight and resumed. */
 function setAppH(){
-  var h=(window.visualViewport&&window.visualViewport.height)?window.visualViewport.height:window.innerHeight;
+  var vv=window.visualViewport;
+  var ae=document.activeElement, typing=ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA');
+  if(vv && typing){
+    var kb=Math.max(0, Math.round(window.innerHeight - vv.height - (vv.offsetTop||0)));
+    if(kb>0) kb+=34;   // clearance so an action button fully clears the keyboard (measured height runs short)
+    document.documentElement.style.setProperty('--kb', kb+'px');
+    return;             // keep --appH stable so the app doesn't shrink and expose the dark background
+  }
+  document.documentElement.style.setProperty('--kb','0px');
+  var h=(vv&&vv.height)?vv.height:window.innerHeight;
   if(h) document.documentElement.style.setProperty('--appH', Math.round(h)+'px');
 }
 setAppH();
 if(window.visualViewport){
   window.visualViewport.addEventListener('resize', function(){ setAppH(); try{ map&&map.invalidateSize(false); }catch(e){} });
   window.visualViewport.addEventListener('scroll', setAppH);
+  window.addEventListener('focusin', setAppH);
+  window.addEventListener('focusout', function(){ setTimeout(setAppH,60); });
 }
 document.addEventListener('visibilitychange',function(){ if(!document.hidden) resyncSoon(); });
 window.addEventListener('pageshow',resyncSoon);

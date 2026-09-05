@@ -7,7 +7,7 @@
    The survey grids + DEM live in their OWN cache (GRIDS) so a shell/code update
    never re-downloads or evicts them -- they are fetched once and kept. Bump
    GRID_VER only when ats_grid.bin / sk_grid.bin / dem.bin themselves change. */
-var SHELL_VER = 'v46';
+var SHELL_VER = 'v47';
 var DATA_VER  = 'v1';
 var GRID_VER  = 'v1';
 var SHELL = 'surveylsd-shell-' + SHELL_VER;   // app shell + libraries (cache-first)
@@ -58,6 +58,10 @@ self.addEventListener('install', function(event){
     await Promise.all(GRID_FILES.map(async function(u){
       var has = await gc.match(u);
       if (!has) { try { await gc.add(u); } catch (e) {} }
+    }));
+    // PDF library for observation export: best-effort (won't break install if a fetch fails)
+    await Promise.all(['./vendor/jspdf.umd.min.js','./vendor/jspdf.plugin.autotable.min.js'].map(async function(u){
+      try { if(!(await cache.match(u))) await cache.add(u); } catch(e){}
     }));
     await self.skipWaiting();
   })());
