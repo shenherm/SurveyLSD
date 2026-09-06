@@ -116,6 +116,10 @@
   .drow .ddate{font-size:11px;color:var(--muted);margin-top:2px}
   .drow button{background:none;border:1px solid var(--line);color:var(--muted);border-radius:7px;padding:6px 9px;font-size:11px;cursor:pointer}
   .drow button.dv{color:var(--accent);border-color:#2c4a6b}
+  .drow .dtype{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:2px 6px;border-radius:5px;margin-right:2px}
+  .drow .dtype.photo{background:#1d3a52;color:#7db8ff}
+  .drow .dtype.report{background:#4a3a10;color:#ffb31c}
+  .drow .dtype.file{background:#252c35;color:var(--muted)}
   #driveView{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.93);display:none;align-items:center;justify-content:center}
   #driveView.show{display:flex}
   #driveView img{max-width:97%;max-height:93%;object-fit:contain}
@@ -511,7 +515,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09ar';
+var swReg=null, APP_VERSION='2026.08.09as';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -2035,11 +2039,17 @@ function driveViewFile(id,name){
 }
 function renderDriveResults(q,files){
   $('#driveTitle').textContent=q; var box=$('#driveList');
-  if(!files.length){ box.innerHTML='<div class="empty">No files in Drive named <b>'+escapeHtml(q)+'</b>.</div>'; return; }
+  if(!files.length){ box.innerHTML='<div class="empty">Nothing in Flight Ops for <b>'+escapeHtml(q)+'</b>.</div>'; return; }
   var h='';
-  files.forEach(function(f,i){ var isImg=(f.mimeType||'').indexOf('image/')===0;
-    h+='<div class="drow"><div class="dinfo"><div class="dnm">'+escapeHtml(f.name)+'</div><div class="ddate">Created '+driveFmtDate(f.createdTime)+'</div></div>'
-      +(isImg?'<button class="dv" data-dv="'+i+'">View</button>':'')+'<button data-do="'+i+'">Drive</button></div>'; });
+  files.forEach(function(f,i){
+    var mt=f.mimeType||'';
+    var isImg=mt.indexOf('image/')===0;
+    var isDoc=mt.indexOf('wordprocessingml')>=0 || mt.indexOf('msword')>=0 || /\.docx?$/i.test(f.name||'');
+    var type=isImg?'Photo':(isDoc?'Report':'File'), cls=isImg?'photo':(isDoc?'report':'file');
+    h+='<div class="drow"><div class="dinfo"><div class="dnm"><span class="dtype '+cls+'">'+type+'</span> '+escapeHtml(f.name)+'</div><div class="ddate">'+driveFmtDate(f.createdTime)+'</div></div>'
+      +(isImg?'<button class="dv" data-dv="'+i+'">View</button>':'')
+      +'<button data-do="'+i+'">'+(isImg?'Drive':'Open')+'</button></div>';
+  });
   box.innerHTML=h;
   box.querySelectorAll('[data-dv]').forEach(function(b){ b.onclick=function(){ var f=files[+b.getAttribute('data-dv')]; driveViewFile(f.id,f.name); }; });
   box.querySelectorAll('[data-do]').forEach(function(b){ b.onclick=function(){ var f=files[+b.getAttribute('data-do')]; window.open(f.webViewLink,'_blank'); }; });
@@ -2048,24 +2058,28 @@ function driveErr(q,msg){
   $('#driveList').innerHTML='<div class="loadbox">Couldn\'t search Drive.<br><span style="color:var(--muted)">'+escapeHtml(msg||'error')+'</span><br><button class="act ghost" id="driveRetry" style="width:auto;padding:9px 18px;margin-top:12px">Try again</button></div>';
   var rb=$('#driveRetry'); if(rb) rb.onclick=function(){ driveCheck(q); };
 }
+function driveSinceDate(months){ var d=new Date(); d.setMonth(d.getMonth()-months); return d.toISOString(); }
 function driveCheck(q){
   openSheet('sheetDrive'); $('#driveTitle').textContent=q;
   $('#driveList').innerHTML='<div class="loadbox"><span class="spinner"></span><br>Searching Flight Ops for <b>'+escapeHtml(q)+'</b>\u2026</div>';
   var run=function(){
     driveToken().then(function(tok){
       return resolveScope(tok).then(function(driveId){
-        return withRetry(function(){
-          var query="name contains '"+q.replace(/['\\]/g,'')+"' and trashed=false";
-          var url='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(query)
-            +'&fields=files(id,name,createdTime,webViewLink,mimeType)&orderBy=createdTime desc&pageSize=100'
-            +'&includeItemsFromAllDrives=true&supportsAllDrives=true'
-            +(driveId ? ('&corpora=drive&driveId='+driveId) : '&corpora=allDrives');
-          return fetchT(url,{headers:{Authorization:'Bearer '+tok}},30000)
-            .then(function(r){ if(!r.ok) throw new Error('Drive returned '+r.status); return r.json(); });
-        }, 3, 1500);
+        var esc=q.replace(/['\\]/g,'');
+        var common='&fields=files(id,name,createdTime,webViewLink,mimeType)&pageSize=100&includeItemsFromAllDrives=true&supportsAllDrives=true'
+          +(driveId ? ('&corpora=drive&driveId='+driveId) : '&corpora=allDrives');
+        var since=driveSinceDate(8);   // reports: only the last 8 months are relevant
+        var urlPhotos='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent("name contains '"+esc+"' and trashed=false")+'&orderBy=createdTime desc'+common;
+        var urlDocs='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent("fullText contains '"+esc+"' and mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document' and modifiedTime > '"+since+"' and trashed=false")+'&orderBy=modifiedTime desc'+common;
+        var getJson=function(url){ return withRetry(function(){ return fetchT(url,{headers:{Authorization:'Bearer '+tok}},30000)
+          .then(function(r){ if(!r.ok) throw new Error('Drive returned '+r.status); return r.json(); }); }, 3, 1500); };
+        return Promise.all([getJson(urlDocs), getJson(urlPhotos)]);   // reports first, then photos
       });
-    }).then(function(j){ renderDriveResults(q,(j.files||[])); })
-      .catch(function(e){ driveErr(q,(e&&e.message)||'error'); });
+    }).then(function(res){
+      var seen={}, files=[];
+      (res[0].files||[]).concat(res[1].files||[]).forEach(function(f){ if(f&&f.id&&!seen[f.id]){ seen[f.id]=1; files.push(f); } });
+      renderDriveResults(q, files);
+    }).catch(function(e){ driveErr(q,(e&&e.message)||'error'); });
   };
   if(window.google&&google.accounts&&google.accounts.oauth2){ initTok(); run(); }
   else { loadGIS().then(function(){ initTok(); run(); }).catch(function(e){ driveErr(q,e.message); }); }
