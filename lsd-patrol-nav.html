@@ -239,6 +239,7 @@
   <button class="btn" id="bDrive"><svg class="ic" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg><span class="lbl">Drive</span></button>
   <button class="btn" id="bKml"><svg class="ic" viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 9-9"/><circle cx="3" cy="17" r="1.7"/><circle cx="21" cy="5" r="1.7"/></svg><span class="lbl">Lines</span></button>
   <button class="btn" id="bReport"><svg class="ic" viewBox="0 0 24 24"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4.5V3.5h6v1"/><path d="M9 10h6M9 13.5h6M9 17h4"/></svg><span class="lbl">Report</span></button>
+  <button class="btn" id="bTimes"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5l3 2"/></svg><span class="lbl">Times</span></button>
   <button class="btn" id="bSettings"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3.2M12 18.3v3.2M2.5 12h3.2M18.3 12h3.2M5 5l2.2 2.2M16.8 16.8L19 19M19 5l-2.2 2.2M7.2 16.8L5 19"/></svg><span class="lbl">Settings</span></button>
 </div>
 
@@ -293,6 +294,24 @@
   <div class="row" style="margin-bottom:8px"><button class="act" id="obsNew2" style="flex:1">+ New observation</button><button class="act ghost" id="obsExport" style="flex:0 0 auto">Export PDF</button></div>
   <div id="obsList"></div>
 </div>
+
+<div class="sheet" id="sheetTimes">
+  <button class="close" data-close>&times;</button>
+  <h2>Flight times</h2>
+  <div class="ft-grid">
+    <div class="ft-fld"><label>Start</label><div class="ft-in"><input type="text" id="ftStart" inputmode="numeric" placeholder="--:--"><button class="ft-now" data-ft="ftStart">Now</button></div></div>
+    <div class="ft-fld"><label>Up</label><div class="ft-in"><input type="text" id="ftUp" inputmode="numeric" placeholder="--:--"><button class="ft-now" data-ft="ftUp">Now</button></div></div>
+    <div class="ft-fld"><label>Down</label><div class="ft-in"><input type="text" id="ftDown" inputmode="numeric" placeholder="--:--"><button class="ft-now" data-ft="ftDown">Now</button></div></div>
+    <div class="ft-fld"><label>Stop</label><div class="ft-in"><input type="text" id="ftStop" inputmode="numeric" placeholder="--:--"><button class="ft-now" data-ft="ftStop">Now</button></div></div>
+  </div>
+  <div class="ft-calc">
+    <div class="ft-calc-item"><span>Air Time</span><b id="ftAir">--</b></div>
+    <div class="ft-calc-item"><span>Flight Time</span><b id="ftFlight">--</b></div>
+  </div>
+  <div class="obs-fld"><label>Notes (ATIS, etc.)</label><textarea id="ftNotes" placeholder="ATIS, remarks..."></textarea></div>
+  <div class="row"><button class="act ghost" id="ftClear" style="flex:0 0 auto">Clear</button><button class="act amber" id="ftDone" style="flex:1">Done</button></div>
+</div>
+
 
 
 <div class="sheet" id="sheetKey">
@@ -370,6 +389,19 @@
   .obs-coord{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px}
   .obs-obs{font-size:13px;color:var(--ink);margin-top:3px;white-space:pre-wrap;word-break:break-word}
   .obs-empty{color:var(--muted);text-align:center;padding:22px}
+
+  /* ---- Flight times ---- */
+  .ft-grid{display:flex;flex-wrap:wrap;gap:10px;margin:6px 0 4px}
+  .ft-fld{flex:1 1 calc(50% - 5px);min-width:0}
+  .ft-fld label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:4px}
+  .ft-in{display:flex;gap:6px}
+  .ft-in input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:11px;font-size:17px;font-family:var(--mono);text-align:center;-webkit-appearance:none}
+  .ft-now{flex:0 0 auto;background:var(--panel2);border:1px solid var(--line);color:var(--accent);border-radius:9px;padding:0 13px;font-size:12px;font-weight:700;cursor:pointer}
+  .ft-calc{display:flex;gap:10px;margin:12px 0}
+  .ft-calc-item{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;text-align:center}
+  .ft-calc-item span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:2px}
+  .ft-calc-item b{font-family:var(--mono);font-size:20px;color:var(--good)}
+
 
 .tgl{flex:none;width:52px;height:31px;border-radius:16px;border:1px solid var(--line);background:var(--panel2);position:relative;cursor:pointer;transition:background .15s,border-color .15s;padding:0}
 .tgl::after{content:'';position:absolute;top:2px;left:2px;width:25px;height:25px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.4)}
@@ -516,7 +548,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09at';
+var swReg=null, APP_VERSION='2026.08.09au';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -2196,15 +2228,24 @@ function _obsLoadPDF(){ if(window.jspdf&&window.jspdf.jsPDF) return Promise.reso
   return _obsLoadScript('vendor/jspdf.umd.min.js')
     .then(function(){ return _obsLoadScript('vendor/jspdf.plugin.autotable.min.js'); }); }
 function exportObsPDF(){
-  if(!observations.length){ toast('No observations to export'); return; }
+  var _hasFt=(typeof flightTimes!=='undefined'&&flightTimes&&(flightTimes.start||flightTimes.up||flightTimes.down||flightTimes.stop||flightTimes.notes)); if(!observations.length && !_hasFt){ toast('Nothing to export yet'); return; }
   toast('Building PDF\u2026');
   _obsLoadPDF().then(function(){
     var jsPDF=window.jspdf.jsPDF; var doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
     doc.setFontSize(14); doc.text('EasyLSD \u2014 Observation Report', 14, 15);
     doc.setFontSize(9); doc.setTextColor(120); doc.text(new Date().toLocaleString(), 14, 21); doc.setTextColor(0);
+    var ftY=27; var ft=(typeof flightTimes!=='undefined'&&flightTimes)?flightTimes:{};
+    if(ft.start||ft.up||ft.down||ft.stop||ft.notes){
+      var _air=_ftDecimal(ft.up,ft.down), _flt=_ftDecimal(ft.start,ft.stop);
+      doc.setFontSize(10); doc.setTextColor(0);
+      doc.text('START '+(ft.start||'--')+'      UP '+(ft.up||'--')+'      DOWN '+(ft.down||'--')+'      STOP '+(ft.stop||'--'), 14, ftY); ftY+=6;
+      doc.text('AIR TIME '+(_air==null?'--':_air.toFixed(1)+' hr')+'      FLIGHT TIME '+(_flt==null?'--':_flt.toFixed(1)+' hr'), 14, ftY); ftY+=6;
+      if(ft.notes){ doc.setFontSize(9); doc.setTextColor(60); var _nl=doc.splitTextToSize('NOTES: '+ft.notes, 269); doc.text(_nl,14,ftY); ftY+=_nl.length*4+2; doc.setTextColor(0); }
+      ftY+=1;
+    }
     var sorted=obsSorted();
-    var body=sorted.map(function(o){ return ['', o.system||'', o.lsd||'', o.coord||'', o.obs||'', o.time||'']; });
-    doc.autoTable({ startY:26,
+    var body=sorted.length ? sorted.map(function(o){ return ['', o.system||'', o.lsd||'', o.coord||'', o.obs||'', o.time||'']; }) : [['','','','','No observations recorded.','']];
+    doc.autoTable({ startY:ftY,
       head:[['', 'System','LSD','Lat/Lon','Observation','Time']], body:body,
       styles:{fontSize:9,cellPadding:2.2,valign:'top',lineColor:[205,205,205],lineWidth:0.1,overflow:'linebreak'},
       headStyles:{fillColor:[30,38,48],textColor:255},
@@ -2231,6 +2272,31 @@ $('#obsRiskLow').onclick=function(){ setObsRisk('low'); };
 $('#obsRiskNone').onclick=function(){ setObsRisk('none'); };
 renderObsMarkers();
 /* =============== END OBSERVATION REPORTING =============== */
+
+/* ================= FLIGHT TIMES ================= */
+var flightTimes=JSON.parse(localStorage.getItem('flightTimes')||'{}');
+function saveFlightTimes(){ try{ localStorage.setItem('flightTimes', JSON.stringify(flightTimes)); }catch(e){} }
+function _ftMin(s){ var m=/^\s*(\d{1,2}):(\d{2})/.exec(s||''); if(!m) return null; var h=+m[1],mi=+m[2]; if(h>23||mi>59) return null; return h*60+mi; }
+function _ftDecimal(a,b){ var x=_ftMin(a), y=_ftMin(b); if(x==null||y==null) return null; var d=y-x; if(d<0) d+=1440; return Math.round((d/60)*10)/10; }
+function _ftNowStr(){ var d=new Date(),p=function(n){return(''+n).padStart(2,'0');}; return p(d.getHours())+':'+p(d.getMinutes()); }
+function ftRecalc(){
+  var air=_ftDecimal($('#ftUp').value,$('#ftDown').value), flt=_ftDecimal($('#ftStart').value,$('#ftStop').value);
+  $('#ftAir').textContent=(air==null?'--':air.toFixed(1)+' hr');
+  $('#ftFlight').textContent=(flt==null?'--':flt.toFixed(1)+' hr');
+}
+function ftCollect(){ flightTimes={start:$('#ftStart').value.trim(),up:$('#ftUp').value.trim(),down:$('#ftDown').value.trim(),stop:$('#ftStop').value.trim(),notes:$('#ftNotes').value.trim()}; saveFlightTimes(); }
+function openTimes(){
+  $('#ftStart').value=flightTimes.start||''; $('#ftUp').value=flightTimes.up||'';
+  $('#ftDown').value=flightTimes.down||''; $('#ftStop').value=flightTimes.stop||''; $('#ftNotes').value=flightTimes.notes||'';
+  ftRecalc(); openSheet('sheetTimes');
+}
+['ftStart','ftUp','ftDown','ftStop','ftNotes'].forEach(function(id){ var el=$('#'+id); if(el) el.addEventListener('input',function(){ ftRecalc(); ftCollect(); }); });
+document.querySelectorAll('.ft-now').forEach(function(b){ b.onclick=function(){ var el=$('#'+b.getAttribute('data-ft')); if(el){ el.value=_ftNowStr(); ftRecalc(); ftCollect(); } }; });
+$('#bTimes').onclick=openTimes;
+$('#ftDone').onclick=function(){ ftCollect(); closeSheets(); };
+$('#ftClear').onclick=function(){ flightTimes={}; saveFlightTimes(); openTimes(); };
+/* =============== END FLIGHT TIMES =============== */
+
 
 
 /* ---------- One-click offline imagery download for the current view ---------- */
