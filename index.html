@@ -284,7 +284,7 @@
   <div class="obs-fld"><label>Lat / Lon</label><input type="text" id="obsCoord"></div>
   <div class="obs-fld"><label>Time overhead</label><input type="text" id="obsTime"></div>
   <div class="obs-fld"><label>Observation</label><textarea id="obsText" placeholder="Describe what you're reporting..."></textarea></div>
-  <div class="obs-fld"><label>Risk</label><div class="obs-risk-row"><button class="obs-risk-btn high" id="obsRiskHigh">High risk</button><button class="obs-risk-btn low" id="obsRiskLow">Low risk</button></div></div>
+  <div class="obs-fld"><label>Risk</label><div class="obs-risk-row"><button class="obs-risk-btn high" id="obsRiskHigh">High risk</button><button class="obs-risk-btn low" id="obsRiskLow">Low risk</button><button class="obs-risk-btn none" id="obsRiskNone">No risk</button></div></div>
   <div class="row"><button class="act ghost" id="obsDelete" style="display:none;flex:0 0 auto;color:#ff5f5f">Delete</button><button class="act amber" id="obsSave" style="flex:1">Save observation</button></div>
 </div>
 <div class="sheet" id="sheetObsList">
@@ -360,6 +360,7 @@
   .obs-risk-btn{flex:1;border:2px solid var(--line);border-radius:10px;padding:12px;font-weight:700;font-size:14px;background:var(--panel2);color:var(--muted);cursor:pointer}
   .obs-risk-btn.on.high{border-color:#ff0000;color:#fff;background:#ff0000}
   .obs-risk-btn.on.low{border-color:#00ccff;color:#062733;background:#00ccff}
+  .obs-risk-btn.on.none{border-color:#37d27b;color:#052b17;background:#37d27b}
   .obs-item{border:1px solid var(--line);border-left:6px solid #00ccff;border-radius:10px;padding:9px 12px;margin-bottom:9px;cursor:pointer;background:var(--panel2)}
   .obs-row1{display:flex;align-items:center;gap:8px;font-size:14px}
   .obs-row1 b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -515,7 +516,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09as';
+var swReg=null, APP_VERSION='2026.08.09at';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -2098,7 +2099,7 @@ if(DRIVE_CLIENT_ID && navigator.onLine!==false){ loadGIS().then(initTok).catch(f
 /* ================= OBSERVATION REPORTING ================= */
 let observations=JSON.parse(localStorage.getItem('observations')||'[]');
 function saveObs(){ try{ localStorage.setItem('observations',JSON.stringify(observations)); }catch(e){} }
-const OBS_COL={high:'#ff0000', low:'#00ccff'};
+const OBS_COL={high:'#ff0000', low:'#00ccff', none:'#37d27b'};
 let obsLayer=L.layerGroup().addTo(map);
 let _obsEdit=null,_obsLat=null,_obsLon=null,_obsRisk='low';
 
@@ -2144,7 +2145,7 @@ function obsPopulateSystems(){
   if(!active.length){ var o=document.createElement('option'); o.value=''; o.textContent='(no lines turned on)'; sel.appendChild(o); return; }
   active.forEach(function(k){ var o=document.createElement('option'); o.value=k.id; o.textContent=k.name; sel.appendChild(o); });
 }
-function setObsRisk(r){ _obsRisk=r; $('#obsRiskHigh').classList.toggle('on',r==='high'); $('#obsRiskLow').classList.toggle('on',r==='low'); }
+function setObsRisk(r){ _obsRisk=r; $('#obsRiskHigh').classList.toggle('on',r==='high'); $('#obsRiskLow').classList.toggle('on',r==='low'); $('#obsRiskNone').classList.toggle('on',r==='none'); }
 function openNewObs(){
   _obsEdit=null; var c=map.getCenter(); _obsLat=c.lat; _obsLon=c.lng;
   $('#obsNewTitle').textContent='New observation'; $('#obsDelete').style.display='none';
@@ -2182,7 +2183,7 @@ function openObsList(){
   if(!list.length){ box.innerHTML='<div class="obs-empty">No observations yet.</div>'; }
   else { box.innerHTML=list.map(function(o){ var col=OBS_COL[o.risk]||OBS_COL.low;
       return '<div class="obs-item" data-id="'+o.id+'" style="border-left-color:'+col+'">'
-        +'<div class="obs-row1"><span class="obs-risk-tag" style="background:'+col+';color:'+(o.risk==='low'?'#062733':'#fff')+'">'+(o.risk==='high'?'HIGH':'LOW')+'</span> <b>'+escapeHtml(o.system||'\u2014')+'</b><span class="obs-time">'+escapeHtml(o.time||'')+'</span></div>'
+        +'<div class="obs-row1"><span class="obs-risk-tag" style="background:'+col+';color:'+(o.risk==='high'?'#fff':'#062733')+'">'+(o.risk==='high'?'HIGH':(o.risk==='none'?'NO RISK':'LOW'))+'</span> <b>'+escapeHtml(o.system||'\u2014')+'</b><span class="obs-time">'+escapeHtml(o.time||'')+'</span></div>'
         +'<div class="obs-lsd">'+escapeHtml(o.lsd||'')+'</div>'
         +(o.coord?'<div class="obs-coord">'+escapeHtml(o.coord)+'</div>':'')
         +(o.obs?'<div class="obs-obs">'+escapeHtml(o.obs)+'</div>':'')+'</div>';
@@ -2209,9 +2210,9 @@ function exportObsPDF(){
       headStyles:{fillColor:[30,38,48],textColor:255},
       columnStyles:{0:{cellWidth:3,cellPadding:0},1:{cellWidth:40},2:{cellWidth:40},3:{cellWidth:38},5:{cellWidth:20}},
       didParseCell:function(data){ if(data.section==='body'){ var o=sorted[data.row.index]; if(o){
-        var rc=(o.risk==='high')?[255,0,0]:[0,204,255];
+        var rc=(o.risk==='high')?[255,0,0]:((o.risk==='none')?[55,210,123]:[0,204,255]);
         if(data.column.index===0){ data.cell.styles.fillColor=rc; }
-        else { data.cell.styles.fillColor=(o.risk==='high')?[255,224,224]:[219,243,255]; }
+        else { data.cell.styles.fillColor=(o.risk==='high')?[255,224,224]:((o.risk==='none')?[223,247,233]:[219,243,255]); }
       } } } });
     var blob=doc.output('blob'), url=URL.createObjectURL(blob);
     var w=window.open(url,'_blank');
@@ -2227,6 +2228,7 @@ $('#obsSave').onclick=saveObsRecord;
 $('#obsDelete').onclick=function(){ if(!_obsEdit) return; observations=observations.filter(function(o){return o.id!==_obsEdit;}); saveObs(); renderObsMarkers(); closeSheets(); toast('Observation deleted'); };
 $('#obsRiskHigh').onclick=function(){ setObsRisk('high'); };
 $('#obsRiskLow').onclick=function(){ setObsRisk('low'); };
+$('#obsRiskNone').onclick=function(){ setObsRisk('none'); };
 renderObsMarkers();
 /* =============== END OBSERVATION REPORTING =============== */
 
