@@ -2230,7 +2230,7 @@ function _obsLoadPDF(){ if(window.jspdf&&window.jspdf.jsPDF) return Promise.reso
   return _obsLoadScript('vendor/jspdf.umd.min.js')
     .then(function(){ return _obsLoadScript('vendor/jspdf.plugin.autotable.min.js'); }); }
 function exportObsPDF(){
-  if(!observations.length){ toast('No observations to export'); return; }
+  var _hasFt=(typeof flightTimes!=='undefined'&&flightTimes&&(flightTimes.start||flightTimes.up||flightTimes.down||flightTimes.stop||flightTimes.notes)); if(!observations.length && !_hasFt){ toast('Nothing to export yet'); return; }
   toast('Building PDF\u2026');
   _obsLoadPDF().then(function(){
     var jsPDF=window.jspdf.jsPDF; var doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
@@ -2246,7 +2246,7 @@ function exportObsPDF(){
       ftY+=1;
     }
     var sorted=obsSorted();
-    var body=sorted.map(function(o){ return ['', o.system||'', o.lsd||'', o.coord||'', o.obs||'', o.time||'']; });
+    var body=sorted.length ? sorted.map(function(o){ return ['', o.system||'', o.lsd||'', o.coord||'', o.obs||'', o.time||'']; }) : [['','','','','No observations recorded.','']];
     doc.autoTable({ startY:ftY,
       head:[['', 'System','LSD','Lat/Lon','Observation','Time']], body:body,
       styles:{fontSize:9,cellPadding:2.2,valign:'top',lineColor:[205,205,205],lineWidth:0.1,overflow:'linebreak'},
