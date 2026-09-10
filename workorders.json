@@ -1,5 +1,5 @@
 {
- "updated": "2026-09-10T18:22:39Z",
+ "updated": "2026-09-10T21:35:28Z",
  "emails": [
   {
    "source": "Nils (Plains)",
@@ -20,11 +20,6 @@
    "source": "David Hoppe (Keyera)",
    "date": "2026-08-28T13:58:59+00:00",
    "week": 1
-  },
-  {
-   "source": "David Hoppe (Keyera)",
-   "date": "2026-08-20T19:56:18+00:00",
-   "week": 2
   }
  ],
  "orders": [
@@ -477,42 +472,6 @@
    "week": "Sheet1",
    "source": "Ground Disturbance .xlsx",
    "wi": 0
-  },
-  {
-   "raw": "SW-08-34-05-W5",
-   "kind": "qtr",
-   "sub": "SW",
-   "sec": 8,
-   "twp": 34,
-   "rge": 5,
-   "mer": 5,
-   "reporter": "Jordan Fleck",
-   "src": "David Hoppe (Keyera)",
-   "pipeline": "Jackson Ck Lateral",
-   "desc": "TC Energy Integrity dig",
-   "line": "discontinued",
-   "work": "started",
-   "week": "Aug. 17 - 20, 2026",
-   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
-   "wi": 2
-  },
-  {
-   "raw": "NE-05-32-04-W5",
-   "kind": "qtr",
-   "sub": "NE",
-   "sec": 5,
-   "twp": 32,
-   "rge": 4,
-   "mer": 5,
-   "reporter": "Jordan Fleck",
-   "src": "David Hoppe (Keyera)",
-   "pipeline": "Co-Ed 8\" mainline",
-   "desc": "Landowner brushing and fecne const. (>30m from Keyera)",
-   "line": "operating",
-   "work": "started",
-   "week": "Aug. 17 - 20, 2026",
-   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
-   "wi": 2
   }
  ]
 }
