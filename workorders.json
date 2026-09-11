@@ -1,6 +1,11 @@
 {
- "updated": "2026-09-11T18:26:02Z",
+ "updated": "2026-09-11T21:40:59Z",
  "emails": [
+  {
+   "source": "David Hoppe (Keyera)",
+   "date": "2026-09-11T20:53:49+00:00",
+   "week": 0
+  },
   {
    "source": "Trevor (Plains)",
    "date": "2026-09-11T18:11:09+00:00",
@@ -14,7 +19,7 @@
   {
    "source": "David Hoppe (Keyera)",
    "date": "2026-09-03T16:07:44+00:00",
-   "week": 0
+   "week": 1
   },
   {
    "source": "Trevor (Plains)",
@@ -24,10 +29,262 @@
   {
    "source": "David Hoppe (Keyera)",
    "date": "2026-08-28T13:58:59+00:00",
-   "week": 1
+   "week": 2
   }
  ],
  "orders": [
+  {
+   "raw": "NE-04-27-04-W5",
+   "kind": "qtr",
+   "sub": "NE",
+   "sec": 4,
+   "twp": 27,
+   "rge": 4,
+   "mer": 5,
+   "reporter": "Jordan Fleck",
+   "src": "David Hoppe (Keyera)",
+   "pipeline": "Co-Ed Mainline",
+   "desc": "Pembina placing access mats by AEGS valve site",
+   "line": "operating",
+   "work": "started",
+   "week": "Sep. 8 - 11, 2026",
+   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "SW-36-36-06-W5",
+   "kind": "qtr",
+   "sub": "SW",
+   "sec": 36,
+   "twp": 36,
+   "rge": 6,
+   "mer": 5,
+   "reporter": "Jordan Fleck",
+   "src": "David Hoppe (Keyera)",
+   "pipeline": "Co-Ed Mainline",
+   "desc": "Keyera integrity dig",
+   "line": "operating",
+   "work": "started",
+   "week": "Sep. 8 - 11, 2026",
+   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "SW-12-39-07-W5",
+   "kind": "qtr",
+   "sub": "SW",
+   "sec": 12,
+   "twp": 39,
+   "rge": 7,
+   "mer": 5,
+   "reporter": "Jordan Fleck",
+   "src": "David Hoppe (Keyera)",
+   "pipeline": "Alhambra laterals",
+   "desc": "Test pit exploration and landowner yard cleanup/burn pit",
+   "line": "operating",
+   "work": "not started",
+   "week": "Sep. 8 - 11, 2026",
+   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "SE-29-32-04-W5",
+   "kind": "qtr",
+   "sub": "SE",
+   "sec": 29,
+   "twp": 32,
+   "rge": 4,
+   "mer": 5,
+   "reporter": "Jordan Fleck",
+   "src": "David Hoppe (Keyera)",
+   "pipeline": "Cremona 6\" Condensate",
+   "desc": "Barn Const. and grading",
+   "line": "operating",
+   "work": "start week Sept. 8",
+   "week": "Sep. 8 - 11, 2026",
+   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "SE-07-38-08-W5",
+   "kind": "qtr",
+   "sub": "SE",
+   "sec": 7,
+   "twp": 38,
+   "rge": 8,
+   "mer": 5,
+   "reporter": "Jordan Fleck",
+   "src": "David Hoppe (Keyera)",
+   "pipeline": "Strachan Laterals",
+   "desc": "Gravel pit expansion",
+   "line": "operating",
+   "work": "not started",
+   "week": "Sep. 8 - 11, 2026",
+   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "NW-08-40-06-W5",
+   "kind": "qtr",
+   "sub": "NW",
+   "sec": 8,
+   "twp": 40,
+   "rge": 6,
+   "mer": 5,
+   "reporter": "Jordan Fleck",
+   "src": "David Hoppe (Keyera)",
+   "pipeline": "Co-Ed Mainline",
+   "desc": "Fibre optic crossing",
+   "line": "operating",
+   "work": "started",
+   "week": "Sep. 8 - 11, 2026",
+   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "NE-16-26-04-W5",
+   "kind": "qtr",
+   "sub": "NE",
+   "sec": 16,
+   "twp": 26,
+   "rge": 4,
+   "mer": 5,
+   "reporter": "Jordan Fleck",
+   "src": "David Hoppe (Keyera)",
+   "pipeline": "Co-Ed 8\" mainline",
+   "desc": "Ground monitor installation - IPL",
+   "line": "operating",
+   "work": "started",
+   "week": "Sep. 8 - 11, 2026",
+   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "SE-SW-36-33-05-W5",
+   "kind": "qtr",
+   "sub": "SW",
+   "sec": 36,
+   "twp": 33,
+   "rge": 5,
+   "mer": 5,
+   "reporter": "Jordan Fleck",
+   "src": "David Hoppe (Keyera)",
+   "pipeline": "East Garrington to BV48",
+   "desc": "Pipeline construction in proximity",
+   "line": "discontinued",
+   "work": "started",
+   "week": "Sep. 8 - 11, 2026",
+   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "SW-22-39-07-W5",
+   "kind": "qtr",
+   "sub": "SW",
+   "sec": 22,
+   "twp": 39,
+   "rge": 7,
+   "mer": 5,
+   "reporter": "Jordan Fleck",
+   "src": "David Hoppe (Keyera)",
+   "pipeline": "Radial Lake Lateral",
+   "desc": "fence construction",
+   "line": "discontinued",
+   "work": "start week Sept. 14",
+   "week": "Sep. 8 - 11, 2026",
+   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "NE-05-32-04-W5",
+   "kind": "qtr",
+   "sub": "NE",
+   "sec": 5,
+   "twp": 32,
+   "rge": 4,
+   "mer": 5,
+   "reporter": "Jordan Fleck",
+   "src": "David Hoppe (Keyera)",
+   "pipeline": "Co-Ed Mainline",
+   "desc": "fence construction",
+   "line": "operating",
+   "work": "start week Sept. 14",
+   "week": "Sep. 8 - 11, 2026",
+   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "NW-09-40-06-W5",
+   "kind": "qtr",
+   "sub": "NW",
+   "sec": 9,
+   "twp": 40,
+   "rge": 6,
+   "mer": 5,
+   "reporter": "Jordan Fleck",
+   "src": "David Hoppe (Keyera)",
+   "pipeline": "Leafland Lateral",
+   "desc": "Fibre optic crossing",
+   "line": "operating",
+   "work": "started",
+   "week": "Sep. 8 - 11, 2026",
+   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "NE-09-40-06-W5",
+   "kind": "qtr",
+   "sub": "NE",
+   "sec": 9,
+   "twp": 40,
+   "rge": 6,
+   "mer": 5,
+   "reporter": "Jordan Fleck",
+   "src": "David Hoppe (Keyera)",
+   "pipeline": "Leafland Lateral",
+   "desc": "Fibre optic crossing",
+   "line": "operating",
+   "work": "started",
+   "week": "Sep. 8 - 11, 2026",
+   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "NE-9-26-01-W5",
+   "kind": "qtr",
+   "sub": "NE",
+   "sec": 9,
+   "twp": 26,
+   "rge": 1,
+   "mer": 5,
+   "reporter": "Jordan Fleck",
+   "src": "David Hoppe (Keyera)",
+   "pipeline": "Cremona 6\" Beddington",
+   "desc": "ATCO hydrovac",
+   "line": "discontinued",
+   "work": "not started",
+   "week": "Sep. 8 - 11, 2026",
+   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "NE-8-34-05-W5",
+   "kind": "qtr",
+   "sub": "NE",
+   "sec": 8,
+   "twp": 34,
+   "rge": 5,
+   "mer": 5,
+   "reporter": "Jordan Fleck",
+   "src": "David Hoppe (Keyera)",
+   "pipeline": "Sundre Sta. Shell Caroline Lateral",
+   "desc": "Plains berm repairs",
+   "line": "operating",
+   "work": "start week Sept. 8",
+   "week": "Sep. 8 - 11, 2026",
+   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
+   "wi": 0
+  },
   {
    "raw": "15-33-035-02W5",
    "kind": "lsd",
@@ -155,10 +412,28 @@
    "wi": 0
   },
   {
-   "raw": "NW-03-40-06-W5, SW-05-40-06-W5",
+   "raw": "NW-03-40-06-W5",
+   "kind": "qtr",
+   "sub": "NW",
+   "sec": 3,
+   "twp": 40,
+   "rge": 6,
+   "mer": 5,
+   "reporter": "Brendan Diamond",
+   "src": "Nils (Plains)",
+   "pipeline": "NORTH FERRIER 08-20 TO 09-27 NPS 8",
+   "desc": "KC Horizontal Inc",
+   "line": "fiber install",
+   "work": "operating",
+   "week": "July 13-24, 2026",
+   "source": "Nils's Ground Disturbance Report.xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "SW-05-40-06-W5",
    "kind": "qtr",
    "sub": "SW",
-   "sec": 3,
+   "sec": 5,
    "twp": 40,
    "rge": 6,
    "mer": 5,
@@ -332,7 +607,7 @@
    "work": "started",
    "week": "Aug. 24 - 27, 2026",
    "source": "Copy of Dave's Ground Disturbance Report.xlsx",
-   "wi": 0
+   "wi": 1
   },
   {
    "raw": "SE-21-40-06-W5",
@@ -350,7 +625,7 @@
    "work": "not started",
    "week": "Aug. 24 - 27, 2026",
    "source": "Copy of Dave's Ground Disturbance Report.xlsx",
-   "wi": 0
+   "wi": 1
   },
   {
    "raw": "SW-12-39-07-W5",
@@ -368,7 +643,7 @@
    "work": "not started",
    "week": "Aug. 24 - 27, 2026",
    "source": "Copy of Dave's Ground Disturbance Report.xlsx",
-   "wi": 0
+   "wi": 1
   },
   {
    "raw": "NE-32-38-03-W5",
@@ -386,25 +661,7 @@
    "work": "started",
    "week": "Aug. 24 - 27, 2026",
    "source": "Copy of Dave's Ground Disturbance Report.xlsx",
-   "wi": 0
-  },
-  {
-   "raw": "SE-07-38-08-W5",
-   "kind": "qtr",
-   "sub": "SE",
-   "sec": 7,
-   "twp": 38,
-   "rge": 8,
-   "mer": 5,
-   "reporter": "Jordan Fleck",
-   "src": "David Hoppe (Keyera)",
-   "pipeline": "Strachan Laterals",
-   "desc": "Gravel pit expansion",
-   "line": "operating",
-   "work": "not started",
-   "week": "Aug. 24 - 27, 2026",
-   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
-   "wi": 0
+   "wi": 1
   },
   {
    "raw": "NW-27-42-08-W5",
@@ -422,7 +679,7 @@
    "work": "started",
    "week": "Aug. 24 - 27, 2026",
    "source": "Copy of Dave's Ground Disturbance Report.xlsx",
-   "wi": 0
+   "wi": 1
   },
   {
    "raw": "SW-10-39-07-W5",
@@ -440,7 +697,7 @@
    "work": "started",
    "week": "Aug. 24 - 27, 2026",
    "source": "Copy of Dave's Ground Disturbance Report.xlsx",
-   "wi": 0
+   "wi": 1
   },
   {
    "raw": "NE/SE-35-31-5-W5",
