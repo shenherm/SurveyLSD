@@ -121,6 +121,11 @@
   .drow .dtype.report{background:#4a3a10;color:#ffb31c}
   .drow .dtype.file{background:#252c35;color:var(--muted)}
   #driveView{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.93);display:none;align-items:center;justify-content:center}
+  #altAlert{position:fixed;inset:0;z-index:2200;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.35)}
+  #altAlert.show{display:flex}
+  #altAlert .altbox{background:linear-gradient(180deg,#ffc64a,#ff9d1c);color:#231400;border:3px solid #fff;border-radius:18px;padding:26px 44px;text-align:center;font-size:32px;font-weight:800;letter-spacing:1px;box-shadow:0 12px 44px rgba(0,0,0,.6);animation:altpulse 1.1s ease-in-out infinite}
+  #altAlert .altsub{font-size:13px;font-weight:600;margin-top:10px;opacity:.85;letter-spacing:.5px}
+  @keyframes altpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
   #driveView.show{display:flex}
   #driveView img{max-width:97%;max-height:93%;object-fit:contain}
   #driveViewClose{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:16px;width:44px;height:44px;border-radius:50%;background:rgba(30,38,48,.92);color:#fff;border:1px solid var(--line);font-size:24px;line-height:1;cursor:pointer;z-index:2}
@@ -251,6 +256,7 @@
   <div class="setrow"><div class="setl"><div class="setname">Range rings</div><div class="sethint">Distance rings in nautical miles, centred on you — for judging distance to targets.</div></div><button class="tgl" id="tgRings" aria-label="Range rings"></button></div>
   <div class="setrow"><div class="setl"><div class="setname">Roads &amp; place names</div><div class="sethint">Overlay road, town and village names on the map — for reporting observations by location. Download a line to keep them offline.</div></div><button class="tgl" id="tgRoads" aria-label="Roads and place names"></button></div>
   <div class="setrow"><div class="setl"><div class="setname">Known work</div><div class="sethint">Client-reported ground disturbance. Amber = this week, grey = prior 2 weeks. Tap a marker for who reported it, the LSD and the work.</div></div><div style="display:flex;align-items:center;gap:10px;flex:none"><button class="woinfo" id="bWorkInfo" aria-label="Known work status"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none"/></svg></button><button class="tgl" id="tgWork" aria-label="Known work"></button></div></div>
+  <div class="setrow"><div class="setl"><div class="setname">Altitude alert</div><div class="sethint">Pop-up + &ldquo;check altitude&rdquo; call-out when GPS altitude reaches 500 ft AGL. Tap the screen to dismiss.</div></div><button class="tgl" id="tgAlt" aria-label="Altitude alert"></button></div>
   <div style="border-top:1px solid var(--line);margin:16px 0 12px"></div>
   <div class="row"><button class="act ghost" id="openKey">Imagery &amp; downloads</button></div>
 </div>
@@ -268,6 +274,7 @@
   <div id="driveList"></div>
 </div>
 <div id="driveView"><button id="driveViewClose">&times;</button><span class="spinner" id="driveViewSpin" style="display:none"></span><img id="driveImg" src="" alt=""></div>
+<div id="altAlert"><div class="altbox">CHECK ALTITUDE<div class="altsub">500 ft AGL &mdash; tap to dismiss</div></div></div>
 
 <div class="sheet" id="sheetWorkInfo">
   <button class="close" data-close>&times;</button>
@@ -380,7 +387,10 @@
   .obs-risk-btn.on.high{border-color:#ff0000;color:#fff;background:#ff0000}
   .obs-risk-btn.on.low{border-color:#00ccff;color:#062733;background:#00ccff}
   .obs-risk-btn.on.none{border-color:#37d27b;color:#052b17;background:#37d27b}
-  .obs-item{border:1px solid var(--line);border-left:6px solid #00ccff;border-radius:10px;padding:9px 12px;margin-bottom:9px;cursor:pointer;background:var(--panel2)}
+  .obs-item{display:flex;align-items:stretch;gap:8px;border:1px solid var(--line);border-left:6px solid #00ccff;border-radius:10px;padding:9px 12px;margin-bottom:9px;background:var(--panel2)}
+  .obs-body{flex:1;min-width:0;cursor:pointer}
+  .obs-reorder{flex:none;display:flex;flex-direction:column;gap:5px;justify-content:center}
+  .obs-reorder button{background:none;border:1px solid var(--line);color:var(--muted);border-radius:6px;width:34px;height:27px;font-size:12px;cursor:pointer;padding:0}
   .obs-row1{display:flex;align-items:center;gap:8px;font-size:14px}
   .obs-row1 b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .obs-row1 .obs-time{margin-left:auto;font-family:var(--mono);color:var(--muted);font-size:12px;flex:none}
@@ -548,7 +558,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09au';
+var swReg=null, APP_VERSION='2026.08.09av';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -975,7 +985,7 @@ function startTracking(){
 }
 const GPS_DR_MAX=2.5, GPS_TAU=0.14;   // seconds: dead-reckon cap, and easing time-constant
 /* ---------- user settings (persisted) ---------- */
-const SETTINGS_DEFAULT={gpsIcon:'plane', trackVector:true, rangeRings:false, roads:false, work:true};
+const SETTINGS_DEFAULT={gpsIcon:'plane', trackVector:true, rangeRings:false, roads:false, work:true, altAlert:true};
 let settings=Object.assign({},SETTINGS_DEFAULT);
 try{ settings=Object.assign(settings, JSON.parse(localStorage.getItem('settings')||'{}')); }catch(e){}
 function saveSettings(){ try{ localStorage.setItem('settings',JSON.stringify(settings)); }catch(e){} }
@@ -1058,7 +1068,7 @@ function onFix(pos){
   const {latitude,longitude,accuracy,altitude}=pos.coords;
   lastFix=[latitude,longitude]; tracking=true;
   gpsAltM=(altitude!=null&&isFinite(altitude))?altitude:null;
-  fetchElev(latitude,longitude).then(m=>{ gpsGroundM=m; renderElev(); }); renderElev();
+  fetchElev(latitude,longitude).then(m=>{ gpsGroundM=m; renderElev(); checkAltAlert(); }); renderElev();
   const v=gpsVel(pos);
   gpsAnchor={lat:latitude,lon:longitude,t:performance.now(),vlat:v.vlat,vlon:v.vlon};
   gpsAcc=accuracy; gpsPrevFix={lat:latitude,lon:longitude,t:pos.timestamp};
@@ -1103,7 +1113,7 @@ function onGpsErr(err){
 function updateCrossVis(){ const c=$('#cross'); if(c) c.style.display=(following&&gpsMarker)?'none':''; }
 function setFollow(on){ following=on; $('#bGps').classList.toggle('on',on); updateCrossVis();
   if(on && startTracking() && lastFix) map.panTo(lastFix,{animate:true,duration:.4}); }
-$('#bGps').onclick=()=>{ if(!tracking){ if(startTracking()) setFollow(true); } else setFollow(!following); };
+$('#bGps').onclick=()=>{ primeSpeech(); if(!tracking){ if(startTracking()) setFollow(true); } else setFollow(!following); };
 map.on('dragstart',()=>{ if(following) setFollow(false); });   // manual pan stops recentring, GPS keeps tracking
 map.on('zoomstart',()=>{ gpsZooming=true; });
 map.on('zoomend',()=>{ gpsZooming=false;   // reproject the ownship overlays cleanly at the settled zoom
@@ -1116,6 +1126,19 @@ startTracking(); setFollow(true);                              // begin tracking
 
 /* ---------- Ground elevation + altitude (ft) ---------- */
 const M2FT=3.28084;
+/* ---------- 500 ft AGL altitude alert (ForeFlight-style) ---------- */
+let _altArmed=true, _speechPrimed=false;
+function primeSpeech(){ if(_speechPrimed) return; _speechPrimed=true; try{ if(window.speechSynthesis){ var u=new SpeechSynthesisUtterance(' '); u.volume=0; window.speechSynthesis.speak(u); } }catch(e){} }
+function fireAltAlert(){ var el=$('#altAlert'); if(el) el.classList.add('show');
+  try{ if(window.speechSynthesis){ window.speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance('Check altitude'); u.rate=1; u.volume=1; window.speechSynthesis.speak(u); } }catch(e){} }
+function checkAltAlert(){
+  if(!settings.altAlert) return;
+  if(gpsAltM==null||gpsGroundM==null) return;
+  var aglFt=(gpsAltM-gpsGroundM)*M2FT;
+  if(_altArmed && aglFt<=500 && aglFt>-200){ _altArmed=false; fireAltAlert(); }
+  else if(aglFt>=700){ _altArmed=true; }
+}
+$('#altAlert').onclick=function(){ this.classList.remove('show'); };
 function fmtFt(m){ return m==null?'—':Math.round(m*M2FT).toLocaleString()+' ft'; }
 function fmtFt10(m){ return m==null?'—':(Math.round(m*M2FT/10)*10).toLocaleString()+' ft'; }
 const elevCache={}, elevPending={};
@@ -1884,7 +1907,8 @@ function syncSettingsUI(){ $('#tgIcon').classList.toggle('on',settings.gpsIcon==
   $('#tgVec').classList.toggle('on',!!settings.trackVector);
   $('#tgRings').classList.toggle('on',!!settings.rangeRings);
   $('#tgRoads').classList.toggle('on',!!settings.roads);
-  $('#tgWork').classList.toggle('on',!!settings.work); }
+  $('#tgWork').classList.toggle('on',!!settings.work);
+  $('#tgAlt').classList.toggle('on',!!settings.altAlert); }
 function applyRoads(){ if(settings.roads){ if(!map.hasLayer(refLayer)) refLayer.addTo(map); } else { if(map.hasLayer(refLayer)) map.removeLayer(refLayer); } }
 $('#bSettings').onclick=()=>{ syncSettingsUI(); openSheet('sheetSettings'); };
 $('#openKey').onclick=()=>{ openSheet('sheetKey'); dlRefresh(); dlStoredRefresh(); };
@@ -1996,6 +2020,7 @@ function openWorkOrders(list){
 $('#woGoto').onclick=function(){ if(_woCur&&_woCur._ll){ setFollow(false); map.setView(_woCur._ll,16); closeSheets(); } };
 function applyWork(){ if(settings.work){ if(!map.hasLayer(woLayer)) woLayer.addTo(map); } else { if(map.hasLayer(woLayer)) map.removeLayer(woLayer); } }
 $('#tgWork').onclick=()=>{ settings.work=!settings.work; saveSettings(); syncSettingsUI(); applyWork(); };
+$('#tgAlt').onclick=()=>{ settings.altAlert=!settings.altAlert; saveSettings(); syncSettingsUI(); };
 applyWork(); loadWorkOrders();
 
 /* ---------- Check Google Drive for prior reports at the centred LSD ---------- */
@@ -2137,10 +2162,22 @@ let _obsEdit=null,_obsLat=null,_obsLon=null,_obsRisk='low';
 
 function _obsTimeKey(o){ var m=/^\s*(\d{1,2}):(\d{2})/.exec(o.time||''); return m?((+m[1])*60+(+m[2])):null; }
 function obsSorted(){ return observations.slice().sort(function(a,b){
-  var ka=_obsTimeKey(a), kb=_obsTimeKey(b);
-  if(ka!=null && kb!=null && ka!==kb) return ka-kb;
+  var oa=(a.ord!=null?a.ord:Infinity), ob=(b.ord!=null?b.ord:Infinity);
+  if(oa!==ob) return oa-ob;
   return (a.created||0)-(b.created||0);
 }); }
+function obsEnsureOrder(){
+  var mx=-1; observations.forEach(function(o){ if(o.ord!=null && o.ord>mx) mx=o.ord; });
+  var miss=observations.filter(function(o){return o.ord==null;});
+  if(!miss.length) return;
+  miss.sort(function(a,b){ var ka=_obsTimeKey(a),kb=_obsTimeKey(b); if(ka!=null&&kb!=null&&ka!==kb) return ka-kb; return (a.created||0)-(b.created||0); });
+  miss.forEach(function(o){ mx+=1; o.ord=mx; }); saveObs();
+}
+function obsMove(id,dir){
+  obsEnsureOrder(); var list=obsSorted(); var i=-1; for(var k=0;k<list.length;k++){ if(list[k].id===id){ i=k; break; } }
+  var j=i+dir; if(i<0||j<0||j>=list.length) return;
+  var t=list[i].ord; list[i].ord=list[j].ord; list[j].ord=t; saveObs(); openObsList();
+}
 function renderObsMarkers(){
   obsLayer.clearLayers();
   observations.forEach(function(o){
@@ -2211,16 +2248,21 @@ function saveObsRecord(){
   saveObs(); renderObsMarkers(); closeSheets(); toast('Observation saved');
 }
 function openObsList(){
-  var box=$('#obsList'); var list=obsSorted();
+  obsEnsureOrder(); var box=$('#obsList'); var list=obsSorted();
   if(!list.length){ box.innerHTML='<div class="obs-empty">No observations yet.</div>'; }
   else { box.innerHTML=list.map(function(o){ var col=OBS_COL[o.risk]||OBS_COL.low;
-      return '<div class="obs-item" data-id="'+o.id+'" style="border-left-color:'+col+'">'
+      return '<div class="obs-item" style="border-left-color:'+col+'">'
+        +'<div class="obs-body" data-id="'+o.id+'">'
         +'<div class="obs-row1"><span class="obs-risk-tag" style="background:'+col+';color:'+(o.risk==='high'?'#fff':'#062733')+'">'+(o.risk==='high'?'HIGH':(o.risk==='none'?'NO RISK':'LOW'))+'</span> <b>'+escapeHtml(o.system||'\u2014')+'</b><span class="obs-time">'+escapeHtml(o.time||'')+'</span></div>'
         +'<div class="obs-lsd">'+escapeHtml(o.lsd||'')+'</div>'
         +(o.coord?'<div class="obs-coord">'+escapeHtml(o.coord)+'</div>':'')
-        +(o.obs?'<div class="obs-obs">'+escapeHtml(o.obs)+'</div>':'')+'</div>';
+        +(o.obs?'<div class="obs-obs">'+escapeHtml(o.obs)+'</div>':'')+'</div>'
+        +'<div class="obs-reorder"><button data-up="'+o.id+'">\u25B2</button><button data-dn="'+o.id+'">\u25BC</button></div>'
+        +'</div>';
     }).join('');
-    box.querySelectorAll('.obs-item').forEach(function(el){ el.onclick=function(){ openObsView(el.getAttribute('data-id')); }; }); }
+    box.querySelectorAll('.obs-body').forEach(function(el){ el.onclick=function(){ openObsView(el.getAttribute('data-id')); }; });
+    box.querySelectorAll('[data-up]').forEach(function(b){ b.onclick=function(e){ if(e&&e.stopPropagation)e.stopPropagation(); obsMove(b.getAttribute('data-up'),-1); }; });
+    box.querySelectorAll('[data-dn]').forEach(function(b){ b.onclick=function(e){ if(e&&e.stopPropagation)e.stopPropagation(); obsMove(b.getAttribute('data-dn'),1); }; }); }
   openSheet('sheetObsList');
 }
 function _obsLoadScript(src){ return new Promise(function(res,rej){ var s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=function(){rej(new Error('load failed'));}; document.head.appendChild(s); }); }

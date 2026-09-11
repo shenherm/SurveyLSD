@@ -59,11 +59,18 @@ def parse_sheet(ws, source, src):
         def g(i):
             v=row[i] if len(row)>i else None
             return str(v).strip() if v not in (None,'') else ''
-        lsd=parse_lsd(a)
-        if lsd:
-            orders.append({'raw':str(a).strip(),**lsd,'reporter':reporter,'src':src,
-              'pipeline':g(1),'desc':g(2),'line':g(3),'work':g(4),'week':ws.title,'source':source})
-        elif a and str(a).strip().upper()!='LSD' and _is_name(a) and not g(1) and not g(3):
+        got=False
+        if a:
+            # one cell can hold several LSDs (e.g. "NW-03-40-06-W5, SW-05-40-06-W5") -> one order each
+            for frag in re.split(r'\s*(?:,|;|&|\band\b|\n)\s*', str(a), flags=re.I):
+                frag=frag.strip()
+                if not frag: continue
+                lsd=parse_lsd(frag)
+                if lsd:
+                    orders.append({'raw':frag,**lsd,'reporter':reporter,'src':src,
+                      'pipeline':g(1),'desc':g(2),'line':g(3),'work':g(4),'week':ws.title,'source':source})
+                    got=True
+        if not got and a and str(a).strip().upper()!='LSD' and _is_name(a) and not g(1) and not g(3):
             reporter=str(a).strip()
     return orders
 
