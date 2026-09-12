@@ -561,7 +561,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09aw';
+var swReg=null, APP_VERSION='2026.08.09ax';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -2033,48 +2033,68 @@ $('#tgAlt').onclick=()=>{ settings.altAlert=!settings.altAlert; saveSettings(); 
 $('#tgLsd').onclick=()=>{ settings.lsdGrid=!settings.lsdGrid; saveSettings(); syncSettingsUI(); applyLsdGrid(); };
 applyWork(); loadWorkOrders();
 
-/* ---------- LSD grid overlay (survey grid: LSD borders + per-cell readout) ---------- */
+/* ---------- LSD grid overlay (single canvas: dashed LSD borders + per-cell readout) ---------- */
 if(!map.getPane('lsdPane')){ map.createPane('lsdPane'); map.getPane('lsdPane').style.zIndex='250'; map.getPane('lsdPane').style.pointerEvents='none'; }
-if(!map.getPane('lsdLabelPane')){ map.createPane('lsdLabelPane'); map.getPane('lsdLabelPane').style.zIndex='285'; map.getPane('lsdLabelPane').style.pointerEvents='none'; }
-const lsdRenderer=L.canvas({pane:'lsdPane',padding:0.3});
-const lsdGridLayer=L.layerGroup();
-function _lsdPt(b8,u,v){   // bilinear point in section (corners: 0 NE,1 NW,2 SW,3 SE at cor[b8..b8+7])
-  var A=(1-u)*(1-v),B=u*(1-v),C=(1-u)*v,D=u*v;
-  return [A*GRID.cor[b8+4]/1e6+B*GRID.cor[b8+6]/1e6+C*GRID.cor[b8+2]/1e6+D*GRID.cor[b8]/1e6,
-          A*GRID.cor[b8+5]/1e6+B*GRID.cor[b8+7]/1e6+C*GRID.cor[b8+3]/1e6+D*GRID.cor[b8+1]/1e6];
+var _lsdCanvas=null, _lsdCtx=null, _lsdT=[0,0.25,0.5,0.75,1];
+function _lsdEnsure(){
+  if(_lsdCanvas) return;
+  _lsdCanvas=L.DomUtil.create('canvas','',map.getPane('lsdPane'));
+  _lsdCanvas.style.position='absolute'; _lsdCanvas.style.left='0'; _lsdCanvas.style.top='0'; _lsdCanvas.style.pointerEvents='none';
+  _lsdCtx=_lsdCanvas.getContext('2d');
 }
-function drawSectionGrid(i,mode){
-  var b8=i*8, T=[0,0.25,0.5,0.75,1];
-  var st={renderer:lsdRenderer,color:'#9aa7b2',weight:1,opacity:0.55,dashArray:'4 4',interactive:false,lineCap:'butt'};
-  for(var a=0;a<5;a++){
-    var vl=[]; for(var q=0;q<5;q++) vl.push(_lsdPt(b8,T[a],T[q])); lsdGridLayer.addLayer(L.polyline(vl,st));
-    var hl=[]; for(var q2=0;q2<5;q2++) hl.push(_lsdPt(b8,T[q2],T[a])); lsdGridLayer.addLayer(L.polyline(hl,st));
-  }
-  if(mode>0){
-    var sec=GRID.sec[i],twp=GRID.twp[i],rge=GRID.rge[i],mer=GRID.mer[i];
-    for(var ce=0;ce<4;ce++) for(var rs=0;rs<4;rs++){
-      var lsdN=(rs%2===0)?rs*4+1+ce:rs*4+4-ce;
-      var c=_lsdPt(b8,1-(ce+0.5)/4,(rs+0.5)/4);
-      var html=(mode===2)?('<div class="lsdlbl">'+fmtLSD({lsd:lsdN,sec:sec,twp:twp,rge:rge,mer:mer})+'</div>')
-                         :('<div class="lsdlbl num">'+lsdN+'</div>');
-      lsdGridLayer.addLayer(L.marker(c,{pane:'lsdLabelPane',icon:L.divIcon({className:'',html:html,iconSize:[0,0]}),interactive:false,keyboard:false}));
-    }
-  }
+function _lsdCP(b8,u,v){   // bilinear corner mix -> container-pixel point
+  var A=(1-u)*(1-v),B=u*(1-v),C=(1-u)*v,D=u*v;
+  return map.latLngToContainerPoint([
+    A*GRID.cor[b8+4]/1e6+B*GRID.cor[b8+6]/1e6+C*GRID.cor[b8+2]/1e6+D*GRID.cor[b8]/1e6,
+    A*GRID.cor[b8+5]/1e6+B*GRID.cor[b8+7]/1e6+C*GRID.cor[b8+3]/1e6+D*GRID.cor[b8+1]/1e6]);
 }
 function drawLsdGrid(){
-  lsdGridLayer.clearLayers();
-  if(!settings.lsdGrid || !GRID || !map.hasLayer(lsdGridLayer)) return;
+  if(!settings.lsdGrid){ if(_lsdCtx){ _lsdCtx.clearRect(0,0,_lsdCanvas.width,_lsdCanvas.height); _lsdCanvas.style.display='none'; } return; }
+  _lsdEnsure();
+  var size=map.getSize();
+  L.DomUtil.setPosition(_lsdCanvas, map.containerPointToLayerPoint([0,0]));
+  if(_lsdCanvas.width!==size.x) _lsdCanvas.width=size.x;
+  if(_lsdCanvas.height!==size.y) _lsdCanvas.height=size.y;
+  _lsdCanvas.style.display=''; _lsdCanvas.style.visibility='visible';
+  var ctx=_lsdCtx; ctx.clearRect(0,0,size.x,size.y);
+  if(!GRID) return;
   var z=map.getZoom(); if(z<14) return;
   var mode=(z>=16)?2:(z>=15?1:0);
-  var b=map.getBounds().pad(0.15), seen={}, n=0;
+  var b=map.getBounds().pad(0.1), seen={}, secs=[];
   var cx0=Math.floor(b.getWest()/CELL),cx1=Math.floor(b.getEast()/CELL),cy0=Math.floor(b.getSouth()/CELL),cy1=Math.floor(b.getNorth()/CELL);
   for(var cx=cx0;cx<=cx1;cx++) for(var cy=cy0;cy<=cy1;cy++){
     var arr=GRID.bucket.get(cellKey(cx,cy)); if(!arr) continue;
-    for(var k=0;k<arr.length;k++){ var i=arr[k]; if(!seen[i]){ seen[i]=1; if(n++>400) return; drawSectionGrid(i,mode); } }
+    for(var k=0;k<arr.length;k++){ var i=arr[k]; if(!seen[i]){ seen[i]=1; if(secs.length<900) secs.push(i); } }
+  }
+  // all borders in one path
+  var P=[[],[],[],[],[]], a, q, s;
+  ctx.strokeStyle='rgba(154,167,178,0.6)'; ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.beginPath();
+  for(s=0;s<secs.length;s++){ var b8=secs[s]*8;
+    for(a=0;a<5;a++) for(q=0;q<5;q++) P[a][q]=_lsdCP(b8,_lsdT[a],_lsdT[q]);
+    for(a=0;a<5;a++){
+      ctx.moveTo(P[a][0].x,P[a][0].y); for(q=1;q<5;q++) ctx.lineTo(P[a][q].x,P[a][q].y);
+      ctx.moveTo(P[0][a].x,P[0][a].y); for(q=1;q<5;q++) ctx.lineTo(P[q][a].x,P[q][a].y);
+    }
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+  // per-cell labels
+  if(mode>0){
+    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.lineJoin='round'; ctx.lineWidth=3;
+    ctx.font=(mode===2?"10px ":"bold 13px ")+"'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace";
+    for(s=0;s<secs.length;s++){ var i2=secs[s], b82=i2*8, sec=GRID.sec[i2],twp=GRID.twp[i2],rge=GRID.rge[i2],mer=GRID.mer[i2];
+      for(var ce=0;ce<4;ce++) for(var rs=0;rs<4;rs++){
+        var lsdN=(rs%2===0)?rs*4+1+ce:rs*4+4-ce;
+        var cp=_lsdCP(b82,1-(ce+0.5)/4,(rs+0.5)/4);
+        var txt=(mode===2)?fmtLSD({lsd:lsdN,sec:sec,twp:twp,rge:rge,mer:mer}):(''+lsdN);
+        ctx.strokeStyle='rgba(0,0,0,0.85)'; ctx.strokeText(txt,cp.x,cp.y);
+        ctx.fillStyle='#e6edf3'; ctx.fillText(txt,cp.x,cp.y);
+      }
+    }
   }
 }
-function applyLsdGrid(){ if(settings.lsdGrid){ if(!map.hasLayer(lsdGridLayer)) lsdGridLayer.addTo(map); drawLsdGrid(); } else { if(map.hasLayer(lsdGridLayer)) map.removeLayer(lsdGridLayer); lsdGridLayer.clearLayers(); } }
-map.on('moveend zoomend',function(){ if(settings.lsdGrid) drawLsdGrid(); });
+function applyLsdGrid(){ drawLsdGrid(); }
+map.on('moveend resize',function(){ if(settings.lsdGrid) drawLsdGrid(); });
+map.on('zoomstart',function(){ if(_lsdCanvas && settings.lsdGrid) _lsdCanvas.style.visibility='hidden'; });
 applyLsdGrid();
 
 
