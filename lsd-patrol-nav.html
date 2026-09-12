@@ -126,6 +126,8 @@
   #altAlert .altbox{background:linear-gradient(180deg,#ffc64a,#ff9d1c);color:#231400;border:3px solid #fff;border-radius:18px;padding:26px 44px;text-align:center;font-size:32px;font-weight:800;letter-spacing:1px;box-shadow:0 12px 44px rgba(0,0,0,.6);animation:altpulse 1.1s ease-in-out infinite}
   #altAlert .altsub{font-size:13px;font-weight:600;margin-top:10px;opacity:.85;letter-spacing:.5px}
   @keyframes altpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+  .lsdlbl{display:inline-block;transform:translate(-50%,-50%);font-family:var(--mono);color:#e6edf3;text-shadow:0 0 3px #000,0 0 3px #000,0 0 2px #000;white-space:nowrap;pointer-events:none;font-size:10px;line-height:1}
+  .lsdlbl.num{font-size:13px;font-weight:700}
   #driveView.show{display:flex}
   #driveView img{max-width:97%;max-height:93%;object-fit:contain}
   #driveViewClose{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:16px;width:44px;height:44px;border-radius:50%;background:rgba(30,38,48,.92);color:#fff;border:1px solid var(--line);font-size:24px;line-height:1;cursor:pointer;z-index:2}
@@ -257,6 +259,7 @@
   <div class="setrow"><div class="setl"><div class="setname">Roads &amp; place names</div><div class="sethint">Overlay road, town and village names on the map — for reporting observations by location. Download a line to keep them offline.</div></div><button class="tgl" id="tgRoads" aria-label="Roads and place names"></button></div>
   <div class="setrow"><div class="setl"><div class="setname">Known work</div><div class="sethint">Client-reported ground disturbance. Amber = this week, grey = prior 2 weeks. Tap a marker for who reported it, the LSD and the work.</div></div><div style="display:flex;align-items:center;gap:10px;flex:none"><button class="woinfo" id="bWorkInfo" aria-label="Known work status"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none"/></svg></button><button class="tgl" id="tgWork" aria-label="Known work"></button></div></div>
   <div class="setrow"><div class="setl"><div class="setname">Altitude alert</div><div class="sethint">Pop-up + &ldquo;check altitude&rdquo; call-out when GPS altitude reaches 500 ft AGL. Tap the screen to dismiss.</div></div><button class="tgl" id="tgAlt" aria-label="Altitude alert"></button></div>
+  <div class="setrow"><div class="setl"><div class="setname">LSD grid</div><div class="sethint">Faint dashed grid marking every LSD boundary; shows the LSD readout in each cell when zoomed in. Uses the built-in survey grid.</div></div><button class="tgl" id="tgLsd" aria-label="LSD grid"></button></div>
   <div style="border-top:1px solid var(--line);margin:16px 0 12px"></div>
   <div class="row"><button class="act ghost" id="openKey">Imagery &amp; downloads</button></div>
 </div>
@@ -558,7 +561,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09av';
+var swReg=null, APP_VERSION='2026.08.09aw';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -938,6 +941,7 @@ function loadGrids(bust){
   }).then(grid=>{
     if(!grid) return false;
     GRID=grid; _lastSecIdx=-1; updateReadout();
+    if(typeof drawLsdGrid==='function' && settings.lsdGrid) drawLsdGrid();
     if(typeof renderWorkOrders==='function' && typeof workOrders!=='undefined' && workOrders.length) renderWorkOrders();
     toast('Exact LSD grid loaded — '+grid.count.toLocaleString()+' sections');
     return true;
@@ -985,7 +989,7 @@ function startTracking(){
 }
 const GPS_DR_MAX=2.5, GPS_TAU=0.14;   // seconds: dead-reckon cap, and easing time-constant
 /* ---------- user settings (persisted) ---------- */
-const SETTINGS_DEFAULT={gpsIcon:'plane', trackVector:true, rangeRings:false, roads:false, work:true, altAlert:true};
+const SETTINGS_DEFAULT={gpsIcon:'plane', trackVector:true, rangeRings:false, roads:false, work:true, altAlert:true, lsdGrid:false};
 let settings=Object.assign({},SETTINGS_DEFAULT);
 try{ settings=Object.assign(settings, JSON.parse(localStorage.getItem('settings')||'{}')); }catch(e){}
 function saveSettings(){ try{ localStorage.setItem('settings',JSON.stringify(settings)); }catch(e){} }
@@ -1908,7 +1912,8 @@ function syncSettingsUI(){ $('#tgIcon').classList.toggle('on',settings.gpsIcon==
   $('#tgRings').classList.toggle('on',!!settings.rangeRings);
   $('#tgRoads').classList.toggle('on',!!settings.roads);
   $('#tgWork').classList.toggle('on',!!settings.work);
-  $('#tgAlt').classList.toggle('on',!!settings.altAlert); }
+  $('#tgAlt').classList.toggle('on',!!settings.altAlert);
+  $('#tgLsd').classList.toggle('on',!!settings.lsdGrid); }
 function applyRoads(){ if(settings.roads){ if(!map.hasLayer(refLayer)) refLayer.addTo(map); } else { if(map.hasLayer(refLayer)) map.removeLayer(refLayer); } }
 $('#bSettings').onclick=()=>{ syncSettingsUI(); openSheet('sheetSettings'); };
 $('#openKey').onclick=()=>{ openSheet('sheetKey'); dlRefresh(); dlStoredRefresh(); };
@@ -1933,11 +1938,15 @@ function WO_SVG(cur){
     +'<circle cx="14" cy="19.8" r="1.7" fill="#241200"/></svg></div>';
 }
 var _WO_M={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
-function _woWeekEnd(s){                    // parse the reported week string -> its end date
-  if(!s) return null;
-  var m=/([A-Za-z]{3,})\.?\s*(\d{1,2})\s*[-\u2013]\s*(\d{1,2}),?\s*(\d{4})/.exec(s);
-  if(!m) return null; var mo=_WO_M[m[1].slice(0,3).toLowerCase()]; if(mo==null) return null;
-  var d=new Date(+m[4], mo, +m[3]); return isNaN(d.getTime())?null:d;
+function _woWeekEnd(s){                    // parse the reported week string -> its end date (handles ranges like "Aug 25 - Sept 4, 2026")
+  if(!s) return null; s=''+s;
+  var mos=[], w=s.match(/[A-Za-z]{3,}/g)||[];
+  for(var i=0;i<w.length;i++){ var k=w[i].slice(0,3).toLowerCase(); if(_WO_M[k]!=null) mos.push(_WO_M[k]); }
+  var nums=s.match(/\d+/g)||[], days=[], years=[];
+  for(var j=0;j<nums.length;j++){ if(nums[j].length<=2) days.push(+nums[j]); else if(nums[j].length===4) years.push(+nums[j]); }
+  if(!mos.length||!days.length||!years.length) return null;
+  var d=new Date(years[years.length-1], mos[mos.length-1], days[days.length-1]);
+  return isNaN(d.getTime())?null:d;
 }
 function _woIsCurrent(o){                  // "this week" = the reported week ended within the last ~8 days (NOT when the email arrived)
   var d=_woWeekEnd(o.week);
@@ -2021,7 +2030,53 @@ $('#woGoto').onclick=function(){ if(_woCur&&_woCur._ll){ setFollow(false); map.s
 function applyWork(){ if(settings.work){ if(!map.hasLayer(woLayer)) woLayer.addTo(map); } else { if(map.hasLayer(woLayer)) map.removeLayer(woLayer); } }
 $('#tgWork').onclick=()=>{ settings.work=!settings.work; saveSettings(); syncSettingsUI(); applyWork(); };
 $('#tgAlt').onclick=()=>{ settings.altAlert=!settings.altAlert; saveSettings(); syncSettingsUI(); };
+$('#tgLsd').onclick=()=>{ settings.lsdGrid=!settings.lsdGrid; saveSettings(); syncSettingsUI(); applyLsdGrid(); };
 applyWork(); loadWorkOrders();
+
+/* ---------- LSD grid overlay (survey grid: LSD borders + per-cell readout) ---------- */
+if(!map.getPane('lsdPane')){ map.createPane('lsdPane'); map.getPane('lsdPane').style.zIndex='250'; map.getPane('lsdPane').style.pointerEvents='none'; }
+if(!map.getPane('lsdLabelPane')){ map.createPane('lsdLabelPane'); map.getPane('lsdLabelPane').style.zIndex='285'; map.getPane('lsdLabelPane').style.pointerEvents='none'; }
+const lsdRenderer=L.canvas({pane:'lsdPane',padding:0.3});
+const lsdGridLayer=L.layerGroup();
+function _lsdPt(b8,u,v){   // bilinear point in section (corners: 0 NE,1 NW,2 SW,3 SE at cor[b8..b8+7])
+  var A=(1-u)*(1-v),B=u*(1-v),C=(1-u)*v,D=u*v;
+  return [A*GRID.cor[b8+4]/1e6+B*GRID.cor[b8+6]/1e6+C*GRID.cor[b8+2]/1e6+D*GRID.cor[b8]/1e6,
+          A*GRID.cor[b8+5]/1e6+B*GRID.cor[b8+7]/1e6+C*GRID.cor[b8+3]/1e6+D*GRID.cor[b8+1]/1e6];
+}
+function drawSectionGrid(i,mode){
+  var b8=i*8, T=[0,0.25,0.5,0.75,1];
+  var st={renderer:lsdRenderer,color:'#9aa7b2',weight:1,opacity:0.55,dashArray:'4 4',interactive:false,lineCap:'butt'};
+  for(var a=0;a<5;a++){
+    var vl=[]; for(var q=0;q<5;q++) vl.push(_lsdPt(b8,T[a],T[q])); lsdGridLayer.addLayer(L.polyline(vl,st));
+    var hl=[]; for(var q2=0;q2<5;q2++) hl.push(_lsdPt(b8,T[q2],T[a])); lsdGridLayer.addLayer(L.polyline(hl,st));
+  }
+  if(mode>0){
+    var sec=GRID.sec[i],twp=GRID.twp[i],rge=GRID.rge[i],mer=GRID.mer[i];
+    for(var ce=0;ce<4;ce++) for(var rs=0;rs<4;rs++){
+      var lsdN=(rs%2===0)?rs*4+1+ce:rs*4+4-ce;
+      var c=_lsdPt(b8,1-(ce+0.5)/4,(rs+0.5)/4);
+      var html=(mode===2)?('<div class="lsdlbl">'+fmtLSD({lsd:lsdN,sec:sec,twp:twp,rge:rge,mer:mer})+'</div>')
+                         :('<div class="lsdlbl num">'+lsdN+'</div>');
+      lsdGridLayer.addLayer(L.marker(c,{pane:'lsdLabelPane',icon:L.divIcon({className:'',html:html,iconSize:[0,0]}),interactive:false,keyboard:false}));
+    }
+  }
+}
+function drawLsdGrid(){
+  lsdGridLayer.clearLayers();
+  if(!settings.lsdGrid || !GRID || !map.hasLayer(lsdGridLayer)) return;
+  var z=map.getZoom(); if(z<14) return;
+  var mode=(z>=16)?2:(z>=15?1:0);
+  var b=map.getBounds().pad(0.15), seen={}, n=0;
+  var cx0=Math.floor(b.getWest()/CELL),cx1=Math.floor(b.getEast()/CELL),cy0=Math.floor(b.getSouth()/CELL),cy1=Math.floor(b.getNorth()/CELL);
+  for(var cx=cx0;cx<=cx1;cx++) for(var cy=cy0;cy<=cy1;cy++){
+    var arr=GRID.bucket.get(cellKey(cx,cy)); if(!arr) continue;
+    for(var k=0;k<arr.length;k++){ var i=arr[k]; if(!seen[i]){ seen[i]=1; if(n++>400) return; drawSectionGrid(i,mode); } }
+  }
+}
+function applyLsdGrid(){ if(settings.lsdGrid){ if(!map.hasLayer(lsdGridLayer)) lsdGridLayer.addTo(map); drawLsdGrid(); } else { if(map.hasLayer(lsdGridLayer)) map.removeLayer(lsdGridLayer); lsdGridLayer.clearLayers(); } }
+map.on('moveend zoomend',function(){ if(settings.lsdGrid) drawLsdGrid(); });
+applyLsdGrid();
+
 
 /* ---------- Check Google Drive for prior reports at the centred LSD ---------- */
 /* Paste your Google OAuth Web client ID below to enable in-app results. Until then, the

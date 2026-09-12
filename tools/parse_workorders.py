@@ -15,11 +15,12 @@ def source_label(s):
     return (s or '').strip()
 
 def sheet_date(title):
-    m=re.search(r'([A-Za-z]{3,})\.?\s*(\d{1,2})\s*[-\u2013]\s*(\d{1,2}),?\s*(\d{4})', title or '')
-    if not m: return None
-    mo=MONTHS.get(m.group(1)[:3].lower())
-    if not mo: return None
-    try: return datetime.date(int(m.group(4)), mo, int(m.group(3)))
+    if not title: return None
+    mos=[MONTHS[w[:3].lower()] for w in re.findall(r'[A-Za-z]{3,}', title) if w[:3].lower() in MONTHS]
+    nums=re.findall(r'\d+', title)
+    days=[int(n) for n in nums if len(n)<=2]; years=[int(n) for n in nums if len(n)==4]
+    if not mos or not days or not years: return None
+    try: return datetime.date(years[-1], mos[-1], days[-1])   # end of the range
     except ValueError: return None
 
 def sheets_newest_first(wb):
@@ -52,26 +53,43 @@ def _is_name(v):
     v=str(v).strip()
     return bool(re.match(r"^[A-Za-z][A-Za-z.' ]{1,40}$", v)) and len(v.split())<=4
 
+def _hdr_cols(row):
+    cells=[(str(c).strip().lower() if c not in (None,'') else '') for c in row]
+    if not any(c.startswith('lsd') or c=='map ref' for c in cells): return None
+    if not any(c=='pipeline' for c in cells): return None
+    cols={}
+    for i,c in enumerate(cells):
+        if (c.startswith('lsd') or c=='map ref') and 'lsd' not in cols: cols['lsd']=i
+        elif c=='pipeline' and 'pipe' not in cols: cols['pipe']=i
+        elif 'description' in c and 'desc' not in cols: cols['desc']=i
+        elif 'line status' in c and 'line' not in cols: cols['line']=i
+        elif 'work status' in c and 'work' not in cols: cols['work']=i
+    return cols
 def parse_sheet(ws, source, src):
     orders=[]; reporter=''
+    cols={'lsd':0,'pipe':1,'desc':2,'line':3,'work':4}    # default layout
     for row in ws.iter_rows(values_only=True):
-        a=row[0] if len(row)>0 else None
-        def g(i):
+        hdr=_hdr_cols(row)
+        if hdr: cols=hdr; continue
+        def g(key):
+            i=cols.get(key)
+            if i is None: return ''
             v=row[i] if len(row)>i else None
             return str(v).strip() if v not in (None,'') else ''
+        a=row[cols['lsd']] if len(row)>cols.get('lsd',0) else None
+        a0=row[0] if len(row)>0 else None                 # column A -> patroller-name rows
         got=False
         if a:
-            # one cell can hold several LSDs (e.g. "NW-03-40-06-W5, SW-05-40-06-W5") -> one order each
             for frag in re.split(r'\s*(?:,|;|&|\band\b|\n)\s*', str(a), flags=re.I):
                 frag=frag.strip()
                 if not frag: continue
                 lsd=parse_lsd(frag)
                 if lsd:
                     orders.append({'raw':frag,**lsd,'reporter':reporter,'src':src,
-                      'pipeline':g(1),'desc':g(2),'line':g(3),'work':g(4),'week':ws.title,'source':source})
+                      'pipeline':g('pipe'),'desc':g('desc'),'line':g('line'),'work':g('work'),'week':ws.title,'source':source})
                     got=True
-        if not got and a and str(a).strip().upper()!='LSD' and _is_name(a) and not g(1) and not g(3):
-            reporter=str(a).strip()
+        if not got and a0 and str(a0).strip().upper() not in ('LSD','MAP REF','TICKET ID') and _is_name(a0) and not g('pipe') and not g('line'):
+            reporter=str(a0).strip()
     return orders
 
 def latest_sheet_orders(path, source, src):
