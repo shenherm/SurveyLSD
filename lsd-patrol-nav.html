@@ -568,7 +568,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09bb';
+var swReg=null, APP_VERSION='2026.08.09bc';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -2076,7 +2076,7 @@ function drawLsdGrid(){
   }
   // all borders in one path
   var P=[[],[],[],[],[]], a, q, s;
-  ctx.strokeStyle='rgba(74,84,96,0.9)'; ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.beginPath();
+  ctx.setLineDash([4,4]); ctx.lineCap='butt'; ctx.beginPath();
   for(s=0;s<secs.length;s++){ var b8=secs[s]*8;
     for(a=0;a<5;a++) for(q=0;q<5;q++) P[a][q]=_lsdCP(b8,_lsdT[a],_lsdT[q]);
     for(a=0;a<5;a++){
@@ -2084,7 +2084,9 @@ function drawLsdGrid(){
       ctx.moveTo(P[0][a].x,P[0][a].y); for(q=1;q<5;q++) ctx.lineTo(P[q][a].x,P[q][a].y);
     }
   }
-  ctx.stroke(); ctx.setLineDash([]);
+  ctx.strokeStyle='rgba(240,244,248,0.5)'; ctx.lineWidth=3; ctx.stroke();     // faint light outline
+  ctx.strokeStyle='rgba(42,50,60,0.95)'; ctx.lineWidth=1.4; ctx.stroke();     // dark dash on top
+  ctx.setLineDash([]);
   // per-cell labels
   if(mode>0){
     ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.lineJoin='round'; ctx.lineWidth=3;
