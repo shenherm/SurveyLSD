@@ -567,7 +567,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09ay';
+var swReg=null, APP_VERSION='2026.08.09ba';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1078,7 +1078,7 @@ function onFix(pos){
   const {latitude,longitude,accuracy,altitude}=pos.coords;
   lastFix=[latitude,longitude]; tracking=true;
   gpsAltM=(altitude!=null&&isFinite(altitude))?altitude:null;
-  fetchElev(latitude,longitude).then(m=>{ gpsGroundM=m; renderElev(); checkAltAlert(); }); renderElev();
+  fetchElev(latitude,longitude).then(m=>{ gpsGroundM=m; renderElev(); try{ checkAltAlert(); }catch(e){} }); renderElev();
   const v=gpsVel(pos);
   gpsAnchor={lat:latitude,lon:longitude,t:performance.now(),vlat:v.vlat,vlon:v.vlon};
   gpsAcc=accuracy; gpsPrevFix={lat:latitude,lon:longitude,t:pos.timestamp};
@@ -1123,7 +1123,7 @@ function onGpsErr(err){
 function updateCrossVis(){ const c=$('#cross'); if(c) c.style.display=(following&&gpsMarker)?'none':''; }
 function setFollow(on){ following=on; $('#bGps').classList.toggle('on',on); updateCrossVis();
   if(on && startTracking() && lastFix) map.panTo(lastFix,{animate:true,duration:.4}); }
-$('#bGps').onclick=()=>{ primeSpeech(); if(!tracking){ if(startTracking()) setFollow(true); } else setFollow(!following); };
+$('#bGps').onclick=()=>{ if(!tracking){ if(startTracking()) setFollow(true); } else setFollow(!following); };
 map.on('dragstart',()=>{ if(following) setFollow(false); });   // manual pan stops recentring, GPS keeps tracking
 map.on('zoomstart',()=>{ gpsZooming=true; });
 map.on('zoomend',()=>{ gpsZooming=false;   // reproject the ownship overlays cleanly at the settled zoom
@@ -1139,6 +1139,7 @@ const M2FT=3.28084;
 /* ---------- 500 ft AGL altitude alert (ForeFlight-style) ---------- */
 let _altArmed=true, _speechPrimed=false;
 function primeSpeech(){ if(_speechPrimed) return; _speechPrimed=true; try{ if(window.speechSynthesis){ var u=new SpeechSynthesisUtterance(' '); u.volume=0; window.speechSynthesis.speak(u); } }catch(e){} }
+try{ ['touchend','pointerdown','mousedown'].forEach(function(ev){ document.addEventListener(ev, primeSpeech, {once:true, passive:true}); }); }catch(e){}
 function fireAltAlert(){ var el=$('#altAlert'); if(el) el.classList.add('show');
   try{ if(window.speechSynthesis){ window.speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance('Check altitude'); u.rate=1; u.volume=1; window.speechSynthesis.speak(u); } }catch(e){} }
 function checkAltAlert(){
@@ -2074,7 +2075,7 @@ function drawLsdGrid(){
   }
   // all borders in one path
   var P=[[],[],[],[],[]], a, q, s;
-  ctx.strokeStyle='rgba(154,167,178,0.6)'; ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.beginPath();
+  ctx.strokeStyle='rgba(74,84,96,0.9)'; ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.beginPath();
   for(s=0;s<secs.length;s++){ var b8=secs[s]*8;
     for(a=0;a<5;a++) for(q=0;q<5;q++) P[a][q]=_lsdCP(b8,_lsdT[a],_lsdT[q]);
     for(a=0;a<5;a++){
@@ -2364,8 +2365,10 @@ function exportObsPDF(){
         var _air=_ftDecimal(ft.up,ft.down), _flt=_ftDecimal(ft.start,ft.stop);
         doc.setFontSize(10); doc.setTextColor(0); doc.setFont('helvetica','bold');
         doc.text('FLIGHT '+(fi+1), 14, ftY); doc.setFont('helvetica','normal');
-        doc.text('START '+(ft.start||'--')+'    UP '+(ft.up||'--')+'    DOWN '+(ft.down||'--')+'    STOP '+(ft.stop||'--')+'    AIR TIME '+(_air==null?'--':_air.toFixed(1)+' hr')+'    FLIGHT TIME '+(_flt==null?'--':_flt.toFixed(1)+' hr'), 34, ftY); ftY+=6;
-        if(ft.notes){ doc.setFontSize(9); doc.setTextColor(60); var _nl=doc.splitTextToSize('NOTES: '+ft.notes, 250); doc.text(_nl,34,ftY); ftY+=_nl.length*4+1; doc.setTextColor(0); }
+        doc.text('START '+(ft.start||'--')+'    UP '+(ft.up||'--')+'    DOWN '+(ft.down||'--')+'    STOP '+(ft.stop||'--'), 34, ftY); ftY+=5.5;
+        doc.text('AIR TIME '+(_air==null?'--':_air.toFixed(1)+' hr')+'    FLIGHT TIME '+(_flt==null?'--':_flt.toFixed(1)+' hr'), 34, ftY); ftY+=5.5;
+        if(ft.notes){ doc.setFontSize(9); doc.setTextColor(60); var _nl=doc.splitTextToSize('NOTES: '+ft.notes, 250); doc.text(_nl,34,ftY); ftY+=_nl.length*4+1; doc.setTextColor(0); doc.setFontSize(10); }
+        ftY+=2;
       });
       ftY+=1;
     }
