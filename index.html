@@ -568,7 +568,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09be';
+var swReg=null, APP_VERSION='2026.08.09bf';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1147,7 +1147,7 @@ function checkAltAlert(){
   if(!settings.altAlert) return;
   if(gpsAltM==null||gpsGroundM==null) return;
   var aglFt=(gpsAltM-gpsGroundM)*M2FT;
-  var ALT_THRESH=300, ALT_REARM=500, ALT_HOLD=5000;   // fire only when sustained below THRESH ft for HOLD ms; re-arm above REARM ft
+  var ALT_THRESH=500, ALT_REARM=600, ALT_HOLD=5000;   // patrol envelope 600-900 ft: fire only when sustained below 500 ft for 5 s; re-arm above 600 ft
   if(aglFt<=ALT_THRESH && aglFt>-300){
     if(!_altLowSince) _altLowSince=Date.now();
     if(_altArmed && (Date.now()-_altLowSince)>=ALT_HOLD){ _altArmed=false; fireAltAlert(); }
