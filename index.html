@@ -568,7 +568,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09bd';
+var swReg=null, APP_VERSION='2026.08.09be';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1138,7 +1138,7 @@ startTracking(); setFollow(true);                              // begin tracking
 /* ---------- Ground elevation + altitude (ft) ---------- */
 const M2FT=3.28084;
 /* ---------- 500 ft AGL altitude alert (ForeFlight-style) ---------- */
-let _altArmed=true, _speechPrimed=false;
+let _altArmed=true, _speechPrimed=false, _altLowSince=0;
 function primeSpeech(){ if(_speechPrimed) return; _speechPrimed=true; try{ if(window.speechSynthesis){ var u=new SpeechSynthesisUtterance(' '); u.volume=0; window.speechSynthesis.speak(u); } }catch(e){} }
 try{ ['touchend','pointerdown','mousedown'].forEach(function(ev){ document.addEventListener(ev, primeSpeech, {once:true, passive:true}); }); }catch(e){}
 function fireAltAlert(){ var el=$('#altAlert'); if(el) el.classList.add('show');
@@ -1147,8 +1147,14 @@ function checkAltAlert(){
   if(!settings.altAlert) return;
   if(gpsAltM==null||gpsGroundM==null) return;
   var aglFt=(gpsAltM-gpsGroundM)*M2FT;
-  if(_altArmed && aglFt<=500 && aglFt>-200){ _altArmed=false; fireAltAlert(); }
-  else if(aglFt>=700){ _altArmed=true; }
+  var ALT_THRESH=300, ALT_REARM=500, ALT_HOLD=5000;   // fire only when sustained below THRESH ft for HOLD ms; re-arm above REARM ft
+  if(aglFt<=ALT_THRESH && aglFt>-300){
+    if(!_altLowSince) _altLowSince=Date.now();
+    if(_altArmed && (Date.now()-_altLowSince)>=ALT_HOLD){ _altArmed=false; fireAltAlert(); }
+  } else {
+    _altLowSince=0;
+    if(aglFt>=ALT_REARM) _altArmed=true;
+  }
 }
 $('#altAlert').onclick=function(){ this.classList.remove('show'); };
 function fmtFt(m){ return m==null?'—':Math.round(m*M2FT).toLocaleString()+' ft'; }
