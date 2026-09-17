@@ -568,7 +568,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09bf';
+var swReg=null, APP_VERSION='2026.08.09bg';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -718,13 +718,15 @@ const OfflineTileLayer=L.TileLayer.extend({
           try{ ctx.drawImage(r.im, ox,oy,sub,sub, 0,0,size.x,size.y); }catch(e){} URL.revokeObjectURL(r.u); shown=true; }
           break; }
       }
-      if(shown) done(null,tile);                                        // reveal the placeholder now (never black)
-      if(navigator.onLine!==false){                                     // 3) upgrade to the sharp network tile when online
-        try{ const resp=await fetch(net); if(resp.ok){ const r=await loadImg(await resp.blob());
-          if(r){ try{ ctx.clearRect(0,0,size.x,size.y); ctx.drawImage(r.im,0,0,size.x,size.y); }catch(e){} URL.revokeObjectURL(r.u);
-            if(!shown) done(null,tile); return; } } }catch(e){}
+      done(null,tile);                                                  // 3) reveal the best cached tile NOW — never wait on the network, so a weak signal can't black out downloaded imagery
+      if(navigator.onLine!==false){                                     // 4) upgrade to the sharp network tile in the background, time-bounded so a slow connection can't hang the map
+        var _ac=(typeof AbortController!=='undefined')?new AbortController():null;
+        var _to=setTimeout(function(){ if(_ac){ try{ _ac.abort(); }catch(e){} } }, 12000);
+        try{ const resp=await fetch(net, _ac?{signal:_ac.signal}:undefined); clearTimeout(_to);
+          if(resp.ok){ const r=await loadImg(await resp.blob());
+            if(r){ try{ ctx.clearRect(0,0,size.x,size.y); ctx.drawImage(r.im,0,0,size.x,size.y); }catch(e){} URL.revokeObjectURL(r.u); } } }
+        catch(e){ clearTimeout(_to); }
       }
-      if(!shown) done(null,tile);                                       // 4) nothing available: transparent (base shows, not black)
     }
     run();
     return tile;
