@@ -1,5 +1,5 @@
 {
- "updated": "2026-09-18T14:57:04Z",
+ "updated": "2026-09-18T18:22:57Z",
  "emails": [
   {
    "source": "David Hoppe (Keyera)",
@@ -25,11 +25,6 @@
    "source": "David Hoppe (Keyera)",
    "date": "2026-09-03T16:07:44+00:00",
    "week": 2
-  },
-  {
-   "source": "Trevor (Plains)",
-   "date": "2026-08-28T16:49:18+00:00",
-   "week": 1
   }
  ],
  "orders": [
@@ -1274,42 +1269,6 @@
    "week": "Aug. 31 - Sep. 3, 2026",
    "source": "Copy of Dave's Ground Disturbance Report.xlsx",
    "wi": 2
-  },
-  {
-   "raw": "NE/SE-35-31-5-W5",
-   "kind": "qtr",
-   "sub": "SE",
-   "sec": 35,
-   "twp": 31,
-   "rge": 5,
-   "mer": 5,
-   "reporter": "",
-   "src": "Trevor (Plains)",
-   "pipeline": "SUPC 12 inch",
-   "desc": "knee hill county removing trees west of the 12 inch pipeline",
-   "line": "active",
-   "work": "started",
-   "week": "Sheet1",
-   "source": "Ground Disturbance .xlsx",
-   "wi": 1
-  },
-  {
-   "raw": "SW-03-34-05-W5",
-   "kind": "qtr",
-   "sub": "SW",
-   "sec": 3,
-   "twp": 34,
-   "rge": 5,
-   "mer": 5,
-   "reporter": "",
-   "src": "Trevor (Plains)",
-   "pipeline": "MADDEN TO SUNDRE CRUDE NPS 8",
-   "desc": "Pine Cliff crossing under the plains pipeline",
-   "line": "active",
-   "work": "started",
-   "week": "Sheet1",
-   "source": "Ground Disturbance .xlsx",
-   "wi": 1
   }
  ]
 }
