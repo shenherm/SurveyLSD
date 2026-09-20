@@ -310,10 +310,16 @@
   <h2>Flight times <span class="ft-zulu">Zulu (UTC)</span></h2>
   <div class="ft-tabs"><button class="ft-tab" data-ftab="0">Flight 1</button><button class="ft-tab" data-ftab="1">Flight 2</button><button class="ft-tab" data-ftab="2">Flight 3</button></div>
   <div class="ft-grid">
-    <div class="ft-fld"><label>Start</label><div class="ft-in"><input type="text" id="ftStart" inputmode="numeric" placeholder="--:--"><button class="ft-now" data-ft="ftStart">Now</button></div></div>
-    <div class="ft-fld"><label>Up</label><div class="ft-in"><input type="text" id="ftUp" inputmode="numeric" placeholder="--:--"><button class="ft-now" data-ft="ftUp">Now</button></div></div>
-    <div class="ft-fld"><label>Down</label><div class="ft-in"><input type="text" id="ftDown" inputmode="numeric" placeholder="--:--"><button class="ft-now" data-ft="ftDown">Now</button></div></div>
-    <div class="ft-fld"><label>Stop</label><div class="ft-in"><input type="text" id="ftStop" inputmode="numeric" placeholder="--:--"><button class="ft-now" data-ft="ftStop">Now</button></div></div>
+    <div class="ft-fld"><label>Start</label><div class="ft-in"><input type="text" id="ftStart" readonly placeholder="--:--"><button class="ft-now" data-ft="ftStart">Now</button></div></div>
+    <div class="ft-fld"><label>Up</label><div class="ft-in"><input type="text" id="ftUp" readonly placeholder="--:--"><button class="ft-now" data-ft="ftUp">Now</button></div></div>
+    <div class="ft-fld"><label>Down</label><div class="ft-in"><input type="text" id="ftDown" readonly placeholder="--:--"><button class="ft-now" data-ft="ftDown">Now</button></div></div>
+    <div class="ft-fld"><label>Stop</label><div class="ft-in"><input type="text" id="ftStop" readonly placeholder="--:--"><button class="ft-now" data-ft="ftStop">Now</button></div></div>
+  </div>
+  <div class="ft-pad">
+    <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
+    <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
+    <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
+    <button type="button" class="ft-pad-fn" data-k="clear">Clr</button><button type="button" data-k="0">0</button><button type="button" class="ft-pad-fn" data-k="back">&#9003;</button>
   </div>
   <div class="ft-calc">
     <div class="ft-calc-item"><span>Air Time</span><b id="ftAir">--</b></div>
@@ -420,6 +426,12 @@
   .ft-tab.on{border-color:var(--accent);color:var(--ink);background:#12202e}
   .ft-tab.has::after{content:'';position:absolute;top:6px;right:8px;width:6px;height:6px;border-radius:50%;background:var(--good)}
   .ft-zulu{font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.5px;vertical-align:middle}
+  .ft-in input[readonly]{cursor:pointer;caret-color:transparent;-webkit-user-select:none;user-select:none}
+  .ft-in input.ft-active{border-color:var(--accent);background:#12202e}
+  .ft-pad{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .ft-pad button{flex:0 0 calc((100% - 16px)/3);padding:16px 0;font-size:21px;font-weight:600;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:11px;font-family:var(--mono)}
+  .ft-pad button:active{background:#1b2a3a}
+  .ft-pad button.ft-pad-fn{color:var(--accent);font-size:16px;font-family:inherit}
   .act.danger{color:#ff7a7a;border-color:#5a2a2a}
 
 
@@ -568,7 +580,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09bg';
+var swReg=null, APP_VERSION='2026.08.09bh';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -2438,14 +2450,29 @@ function ftRecalc(){
 }
 function ftTabs(){ document.querySelectorAll('.ft-tab').forEach(function(t){ var i=+t.getAttribute('data-ftab'); t.classList.toggle('on',i===_ftActive); t.classList.toggle('has',_ftHas(flightTimes[i])); }); }
 function ftSaveActive(){ flightTimes[_ftActive]={start:$('#ftStart').value.trim(),up:$('#ftUp').value.trim(),down:$('#ftDown').value.trim(),stop:$('#ftStop').value.trim(),notes:$('#ftNotes').value.trim()}; saveFlightTimes(); ftTabs(); }
+var _ftFieldOrder=['ftStart','ftUp','ftDown','ftStop'], _ftField='ftStart', _ftFresh=true;
+function _ftFmt(digits){ if(!digits) return ''; if(digits.length<=2) return digits; return digits.slice(0,2)+':'+digits.slice(2); }
+function ftSetActive(id){ _ftField=id; _ftFresh=true; _ftFieldOrder.forEach(function(fid){ var el=$('#'+fid); if(el) el.classList.toggle('ft-active', fid===id); }); }
+function ftAdvance(){ var i=_ftFieldOrder.indexOf(_ftField); if(i>=0 && i<_ftFieldOrder.length-1) ftSetActive(_ftFieldOrder[i+1]); }
+function ftKey(d){
+  var f=$('#'+_ftField); if(!f) return;
+  var digits=(f.value||'').split(':').join('');
+  if(d==='back'){ _ftFresh=false; digits=digits.slice(0,-1); }
+  else if(d==='clear'){ _ftFresh=false; digits=''; }
+  else { if(_ftFresh){ digits=''; _ftFresh=false; } if(digits.length>=4) return; digits+=d; }
+  f.value=_ftFmt(digits); ftRecalc(); ftSaveActive();
+  if(d!=='back' && d!=='clear' && digits.length>=4) ftAdvance();
+}
 function ftLoad(i){ _ftActive=i; var f=flightTimes[i]||{};
   $('#ftStart').value=f.start||''; $('#ftUp').value=f.up||''; $('#ftDown').value=f.down||''; $('#ftStop').value=f.stop||''; $('#ftNotes').value=f.notes||'';
-  ftTabs(); ftRecalc(); }
+  ftTabs(); ftRecalc(); ftSetActive('ftStart'); }
 function openTimes(){ ftLoad(_ftActive); openSheet('sheetTimes'); }
-['ftStart','ftUp','ftDown','ftStop','ftNotes'].forEach(function(id){ var el=$('#'+id); if(el) el.addEventListener('input',function(){ ftRecalc(); ftSaveActive(); }); });
-document.querySelectorAll('.ft-now').forEach(function(b){ b.onclick=function(){ var el=$('#'+b.getAttribute('data-ft')); if(el){ el.value=_ftNowStr(); ftRecalc(); ftSaveActive(); } }; });
+['ftNotes'].forEach(function(id){ var el=$('#'+id); if(el) el.addEventListener('input',function(){ ftSaveActive(); }); });
+document.querySelectorAll('.ft-now').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-ft'), el=$('#'+id); if(el){ el.value=_ftNowStr(); ftRecalc(); ftSaveActive(); ftSetActive(id); } }; });
 document.querySelectorAll('.ft-tab').forEach(function(t){ t.onclick=function(){ ftSaveActive(); ftLoad(+t.getAttribute('data-ftab')); }; });
 $('#bTimes').onclick=openTimes;
+document.querySelectorAll('.ft-pad button').forEach(function(b){ b.onclick=function(){ ftKey(b.getAttribute('data-k')); }; });
+_ftFieldOrder.forEach(function(fid){ var el=$('#'+fid); if(el) el.addEventListener('click', function(){ ftSetActive(fid); }); });
 $('#ftDone').onclick=function(){ ftSaveActive(); closeSheets(); };
 $('#ftClear').onclick=function(){ flightTimes[_ftActive]={}; saveFlightTimes(); ftLoad(_ftActive); };
 /* =============== END FLIGHT TIMES =============== */
