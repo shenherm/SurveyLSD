@@ -580,7 +580,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09bi';
+var swReg=null, APP_VERSION='2026.08.09bj';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -1844,15 +1844,20 @@ async function installBuiltins(){
     let geom; try{ const g=await fetch('lines/'+ln.file,{cache:'no-store'}); if(!g.ok) continue; geom=await g.json(); }
     catch(e){ continue; }
     try{ await idbPut(ln.id,geom); }catch(e){ continue; }
-    if(!exists){ kmls.push({id:ln.id,name:ln.name,on:(ln.on===false?false:true),color:null,width:0,order:0,builtin:true,bv:ln.v}); }
+    if(!exists){ var _nk={id:ln.id,name:ln.name,on:(ln.on===false?false:true),color:null,width:0,order:0,builtin:true,bv:ln.v};
+      var _nln=(ln.name||'').toLowerCase(), _npos=kmls.length;
+      for(var _npi=0;_npi<kmls.length;_npi++){ if((kmls[_npi].name||'').toLowerCase() > _nln){ _npos=_npi; break; } }
+      kmls.splice(_npos,0,_nk); }
     else { exists.builtin=true; exists.bv=ln.v;
       disposeLayer(ln.id); }
     kmlInstalled[ln.id]=ln.v; changed=true;
   }
-  // keep the list alphabetical by name so newly added built-ins slot into place instead of landing at the bottom
-  var _ord0=kmls.map(function(k){return k.id;}).join('|');
-  kmls.sort(function(a,b){ var an=(a.name||'').toLowerCase(), bn=(b.name||'').toLowerCase(); return an<bn?-1:(an>bn?1:0); });
-  if(kmls.map(function(k){return k.id;}).join('|')!==_ord0) changed=true;
+  // one-time: alphabetise the existing list once to establish a clean baseline. After this, ▲▼ draw-order reorders persist.
+  if(!localStorage.getItem('kmlAlphaSorted1')){
+    kmls.sort(function(a,b){ var an=(a.name||'').toLowerCase(), bn=(b.name||'').toLowerCase(); return an<bn?-1:(an>bn?1:0); });
+    try{ localStorage.setItem('kmlAlphaSorted1','1'); }catch(e){}
+    changed=true;
+  }
   if(changed){
     localStorage.setItem('kmlBuiltins',JSON.stringify(kmlInstalled));
     setOrders(); saveKmls();
