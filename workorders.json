@@ -1,5 +1,5 @@
 {
- "updated": "2026-09-24T14:59:36Z",
+ "updated": "2026-09-24T19:05:03Z",
  "emails": [
   {
    "source": "David Hoppe (Keyera)",
@@ -20,11 +20,6 @@
    "source": "Nils (Plains)",
    "date": "2026-09-04T15:37:06+00:00",
    "week": 0
-  },
-  {
-   "source": "David Hoppe (Keyera)",
-   "date": "2026-09-03T16:07:44+00:00",
-   "week": 2
   }
  ],
  "orders": [
@@ -1233,42 +1228,6 @@
    "week": "August 25-Sept 4, 2026",
    "source": "Nils's Ground Disturbance Report.xlsx",
    "wi": 0
-  },
-  {
-   "raw": "SE-11-39-07-W5",
-   "kind": "qtr",
-   "sub": "SE",
-   "sec": 11,
-   "twp": 39,
-   "rge": 7,
-   "mer": 5,
-   "reporter": "Jordan Fleck",
-   "src": "David Hoppe (Keyera)",
-   "pipeline": "Co-Ed Mainline",
-   "desc": "Buried power cable crossing",
-   "line": "operating",
-   "work": "started",
-   "week": "Aug. 31 - Sep. 3, 2026",
-   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
-   "wi": 2
-  },
-  {
-   "raw": "NW-05-40-06-W5",
-   "kind": "qtr",
-   "sub": "NW",
-   "sec": 5,
-   "twp": 40,
-   "rge": 6,
-   "mer": 5,
-   "reporter": "Jordan Fleck",
-   "src": "David Hoppe (Keyera)",
-   "pipeline": "Co-Ed 10\" and 8\"",
-   "desc": "Fiber optic crossing",
-   "line": "operating",
-   "work": "started",
-   "week": "Aug. 31 - Sep. 3, 2026",
-   "source": "Copy of Dave's Ground Disturbance Report.xlsx",
-   "wi": 2
   }
  ]
 }
