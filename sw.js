@@ -7,7 +7,7 @@
    The survey grids + DEM live in their OWN cache (GRIDS) so a shell/code update
    never re-downloads or evicts them -- they are fetched once and kept. Bump
    GRID_VER only when ats_grid.bin / sk_grid.bin / dem.bin themselves change. */
-var SHELL_VER = 'v65';
+var SHELL_VER = 'v66';
 var DATA_VER  = 'v1';
 var GRID_VER  = 'v1';
 var SHELL = 'surveylsd-shell-' + SHELL_VER;   // app shell + libraries (cache-first)
@@ -105,10 +105,16 @@ async function gridFirst(req){
   return res;
 }
 
+function fetchTimeout(req, ms){
+  if (typeof AbortController === 'undefined') return fetch(req);
+  var ctrl = new AbortController();
+  var to = setTimeout(function(){ try { ctrl.abort(); } catch (e) {} }, ms);
+  return fetch(req, { signal: ctrl.signal }).then(function(r){ clearTimeout(to); return r; }, function(e){ clearTimeout(to); throw e; });
+}
 async function networkFirst(req, cacheName){
   var cache = await caches.open(cacheName);
   try {
-    var res = await fetch(req);
+    var res = await fetchTimeout(req, 9000);
     if (res && res.ok) cache.put(req, res.clone());
     return res;
   } catch (e) {
@@ -137,7 +143,8 @@ self.addEventListener('fetch', function(event){
     var isDoc = req.mode === 'navigate'
              || url.pathname.charAt(url.pathname.length - 1) === '/'
              || url.pathname.indexOf('.html') !== -1;
-    if (isDoc) { event.respondWith(networkFirst(req, SHELL)); return; }
+    // App document: cache-first so the shell renders INSTANTLY on a weak/no signal (updates arrive via the SW version bump + refresh banner). networkFirst here caused a ~1-minute white screen.
+    if (isDoc) { event.respondWith(cacheFirst(req, SHELL)); return; }
     event.respondWith(cacheFirst(req, SHELL)); return;
   }
   // Anything else (incl. map tiles when online): network, fall back to cache if present.
