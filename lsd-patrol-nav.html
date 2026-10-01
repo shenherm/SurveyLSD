@@ -580,7 +580,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09bk';
+var swReg=null, APP_VERSION='2026.08.09bl';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -762,7 +762,7 @@ const osm=offlineLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{max
 // Transparent OSM label overlay (road names + towns/villages). CORS-enabled, so the
 // fetch-based tile loader can read it — Esri's keyed endpoint doesn't expose the reference
 // layers to basemap keys, and its keyless ones block cross-origin reads.
-function refUrl(){ return 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png'; }
+function refUrl(){ return 'https://basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png?key=cb1_45rh_1_c9f4c45f04d86d7ec23a11be'; }
 if(!map.getPane('refPane')){ map.createPane('refPane'); map.getPane('refPane').style.zIndex='300'; map.getPane('refPane').style.pointerEvents='none'; }
 const refLabels=offlineLayer(refUrl(),{maxZoom:21,maxNativeZoom:16,pane:'refPane',layerId:'reflabels',subdomains:'abcd',attribution:'&copy; OpenStreetMap, &copy; CARTO',updateWhenIdle:true,updateWhenZooming:false,keepBuffer:4});
 const refLayer=L.layerGroup([refLabels]);
