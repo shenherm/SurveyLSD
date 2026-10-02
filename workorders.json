@@ -1,10 +1,15 @@
 {
- "updated": "2026-10-01T23:08:03Z",
+ "updated": "2026-10-02T02:11:14Z",
  "emails": [
   {
    "source": "Trevor (Plains)",
-   "date": "2026-09-25T18:08:42+00:00",
+   "date": "2026-10-01T21:06:16+00:00",
    "week": 0
+  },
+  {
+   "source": "Trevor (Plains)",
+   "date": "2026-09-25T18:08:42+00:00",
+   "week": 1
   },
   {
    "source": "David Hoppe (Keyera)",
@@ -24,7 +29,7 @@
   {
    "source": "Trevor (Plains)",
    "date": "2026-09-11T18:11:09+00:00",
-   "week": 1
+   "week": 2
   }
  ],
  "orders": [
@@ -165,12 +170,84 @@
    "reporter": "",
    "src": "Trevor (Plains)",
    "pipeline": "SUNDRE TO HARTELL NPS 12",
-   "desc": "plians integrity dig",
+   "desc": "plains integrity dig",
    "line": "active",
    "work": "started",
    "week": "Sheet1",
    "source": "Ground Disturbance .xlsx",
    "wi": 0
+  },
+  {
+   "raw": "NE-36-28-03-W5",
+   "kind": "qtr",
+   "sub": "NE",
+   "sec": 36,
+   "twp": 28,
+   "rge": 3,
+   "mer": 5,
+   "reporter": "",
+   "src": "Trevor (Plains)",
+   "pipeline": "MADDEN TO SUNDRE CRUDE NPS 8",
+   "desc": "drill rig drilling four bore holes the closest one is 66 meters from the plains pipeline at the Madden golf course",
+   "line": "active",
+   "work": "started",
+   "week": "Sheet1",
+   "source": "Ground Disturbance .xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "SE-29-32-04-W5",
+   "kind": "qtr",
+   "sub": "SE",
+   "sec": 29,
+   "twp": 32,
+   "rge": 4,
+   "mer": 5,
+   "reporter": "",
+   "src": "Trevor (Plains)",
+   "pipeline": "HARMATTAN TO SUNDRE NPS 4 butane",
+   "desc": "Plowing in new gas line 40 meters North East of the plains C3 line",
+   "line": "active",
+   "work": "started",
+   "week": "Sheet1",
+   "source": "Ground Disturbance .xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "SW-10-25-04-W5",
+   "kind": "qtr",
+   "sub": "SW",
+   "sec": 10,
+   "twp": 25,
+   "rge": 4,
+   "mer": 5,
+   "reporter": "",
+   "src": "Trevor (Plains)",
+   "pipeline": "SUNDRE TO HARTELL NPS 12",
+   "desc": "Installing driveway and waterline",
+   "line": "active",
+   "work": "started",
+   "week": "Sheet1",
+   "source": "Ground Disturbance .xlsx",
+   "wi": 0
+  },
+  {
+   "raw": "NE-13-28-05-W5",
+   "kind": "qtr",
+   "sub": "NE",
+   "sec": 13,
+   "twp": 28,
+   "rge": 5,
+   "mer": 5,
+   "reporter": "",
+   "src": "Trevor (Plains)",
+   "pipeline": "SUNDRE TO HARTELL NPS 12",
+   "desc": "plians integrity dig",
+   "line": "active",
+   "work": "started",
+   "week": "Sheet1",
+   "source": "Ground Disturbance .xlsx",
+   "wi": 1
   },
   {
    "raw": "SE-11-39-07-W5",
