@@ -401,6 +401,8 @@
   .obs-body{flex:1;min-width:0;cursor:pointer}
   .obs-reorder{flex:none;display:flex;flex-direction:column;gap:5px;justify-content:center}
   .obs-reorder button{background:none;border:1px solid var(--line);color:var(--muted);border-radius:6px;width:34px;height:27px;font-size:12px;cursor:pointer;padding:0}
+  .obs-goto{flex:none;width:44px;background:none;border:1px solid var(--line);color:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+  .obs-goto:active{background:#12202e}
   .obs-row1{display:flex;align-items:center;gap:8px;font-size:14px}
   .obs-row1 b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .obs-row1 .obs-time{margin-left:auto;font-family:var(--mono);color:var(--muted);font-size:12px;flex:none}
@@ -580,7 +582,7 @@ function boot(){
    Downloads (imagery/elevation) live in IndexedDB and are NEVER touched by reloading or by
    a code/service-worker update — only the app shell is replaced. So updating is just a
    reload once online. We also request persistent storage so iOS won't evict the downloads. */
-var swReg=null, APP_VERSION='2026.08.09bl';
+var swReg=null, APP_VERSION='2026.08.09bm';
 function swShowUpdate(){ var b=document.getElementById('updateBar'); if(b) b.style.display='flex'; }
 function appCheckUpdate(){
   var t=document.getElementById('toast');
@@ -2361,6 +2363,11 @@ function saveObsRecord(){
   else observations.push(rec);
   saveObs(); renderObsMarkers(); closeSheets(); toast('Observation saved');
 }
+function obsGoto(id){
+  var o=observations.find(function(x){return x.id===id;}); if(!o) return;
+  if(o.lat==null||o.lon==null){ toast('No saved location for this observation'); return; }
+  setFollow(false); map.setView([o.lat,o.lon],16); closeSheets();
+}
 function openObsList(){
   obsEnsureOrder(); var box=$('#obsList'); var list=obsSorted();
   if(!list.length){ box.innerHTML='<div class="obs-empty">No observations yet.</div>'; }
@@ -2371,12 +2378,14 @@ function openObsList(){
         +'<div class="obs-lsd">'+escapeHtml(o.lsd||'')+'</div>'
         +(o.coord?'<div class="obs-coord">'+escapeHtml(o.coord)+'</div>':'')
         +(o.obs?'<div class="obs-obs">'+escapeHtml(o.obs)+'</div>':'')+'</div>'
+        +'<button class="obs-goto" data-goto="'+o.id+'" aria-label="Go to location"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></svg></button>'
         +'<div class="obs-reorder"><button data-up="'+o.id+'">\u25B2</button><button data-dn="'+o.id+'">\u25BC</button></div>'
         +'</div>';
     }).join('');
     box.querySelectorAll('.obs-body').forEach(function(el){ el.onclick=function(){ openObsView(el.getAttribute('data-id')); }; });
     box.querySelectorAll('[data-up]').forEach(function(b){ b.onclick=function(e){ if(e&&e.stopPropagation)e.stopPropagation(); obsMove(b.getAttribute('data-up'),-1); }; });
-    box.querySelectorAll('[data-dn]').forEach(function(b){ b.onclick=function(e){ if(e&&e.stopPropagation)e.stopPropagation(); obsMove(b.getAttribute('data-dn'),1); }; }); }
+    box.querySelectorAll('[data-dn]').forEach(function(b){ b.onclick=function(e){ if(e&&e.stopPropagation)e.stopPropagation(); obsMove(b.getAttribute('data-dn'),1); }; });
+    box.querySelectorAll('[data-goto]').forEach(function(b){ b.onclick=function(e){ if(e&&e.stopPropagation)e.stopPropagation(); obsGoto(b.getAttribute('data-goto')); }; }); }
   openSheet('sheetObsList');
 }
 function _obsLoadScript(src){ return new Promise(function(res,rej){ var s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=function(){rej(new Error('load failed'));}; document.head.appendChild(s); }); }
